@@ -1,0 +1,9 @@
+vayvyx.com, www.vayvyx.com {
+    root * /var/www/VayvyxWebsite/vayvyx-web/dist
+
+    encode gzip zstd
+
+    try_files {path} /index.html
+
+    file_server
+}
