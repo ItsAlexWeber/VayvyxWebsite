@@ -1,0 +1,880 @@
+.account-portal-page {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 100svh;
+  flex-direction: column;
+  padding: 1rem 1.25rem 1.25rem;
+  color: #f8fbff;
+  isolation: isolate;
+}
+
+.account-portal-navigation {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.account-navigation-button {
+  display: inline-flex;
+  min-height: 2.65rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  color: rgba(248, 251, 255, 0.88);
+  background: rgba(11, 17, 33, 0.58);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(20px);
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease,
+    opacity 180ms ease;
+}
+
+.account-navigation-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(22, 31, 53, 0.72);
+}
+
+.account-navigation-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.account-portal-shell {
+  width: min(100%, 72rem);
+  margin: 0.75rem auto 0;
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.78fr) minmax(0, 1.22fr);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 1.75rem;
+  background: rgba(7, 11, 23, 0.54);
+  box-shadow: 0 30px 110px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(26px);
+}
+
+.account-portal-information {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 1.65rem 1.8rem 1.4rem;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 18% 18%,
+      rgba(68, 224, 255, 0.16),
+      transparent 20rem
+    ),
+    radial-gradient(
+      circle at 88% 82%,
+      rgba(132, 103, 255, 0.2),
+      transparent 25rem
+    ),
+    linear-gradient(
+      145deg,
+      rgba(18, 42, 58, 0.8),
+      rgba(17, 24, 49, 0.88)
+    );
+}
+
+.account-portal-information::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  opacity: 0.15;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.08) 1px,
+      transparent 1px
+    );
+  background-size: 52px 52px;
+  mask-image: linear-gradient(to bottom, black, transparent);
+}
+
+.account-portal-brand,
+.account-portal-information-content,
+.account-portal-panel-footer {
+  position: relative;
+  z-index: 1;
+}
+
+.account-portal-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.account-portal-logo {
+  display: grid;
+  width: 2.55rem;
+  height: 2.55rem;
+  place-items: center;
+  overflow: hidden;
+  clip-path: polygon(
+    25% 5%,
+    75% 5%,
+    100% 50%,
+    75% 95%,
+    25% 95%,
+    0% 50%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background:
+    linear-gradient(
+      135deg,
+      rgba(112, 215, 255, 0.3),
+      rgba(154, 124, 255, 0.32)
+    ),
+    rgba(255, 255, 255, 0.08);
+}
+
+.account-portal-logo img {
+  display: block;
+  width: 68%;
+  height: 68%;
+  object-fit: contain;
+}
+
+.account-portal-information-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  padding: 1.8rem 0 1.4rem;
+}
+
+.account-portal-eyebrow {
+  margin: 0 0 0.65rem;
+  color: #77ffe4;
+  font-size: 0.69rem;
+  font-weight: 850;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+}
+
+.account-portal-information h1 {
+  max-width: 9ch;
+  margin: 0;
+  color: #f8fbff;
+  font-size: clamp(2.5rem, 4.5vw, 4.1rem);
+  line-height: 0.98;
+  letter-spacing: -0.058em;
+}
+
+.account-portal-description {
+  margin: 0.9rem 0 0;
+  color: rgba(248, 251, 255, 0.7);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.account-portal-feature-list {
+  display: grid;
+  gap: 0.72rem;
+  margin-top: 1.4rem;
+}
+
+.account-portal-feature {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.72rem;
+  align-items: flex-start;
+}
+
+.account-portal-feature > span {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 1px solid rgba(119, 255, 228, 0.22);
+  border-radius: 0.62rem;
+  color: #77ffe4;
+  background: rgba(119, 255, 228, 0.08);
+  font-size: 0.64rem;
+  font-weight: 850;
+}
+
+.account-portal-feature strong {
+  display: block;
+  color: #f8fbff;
+  font-size: 0.88rem;
+}
+
+.account-portal-feature p {
+  margin: 0.18rem 0 0;
+  color: rgba(248, 251, 255, 0.58);
+  font-size: 0.76rem;
+  line-height: 1.42;
+}
+
+.account-portal-panel-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.account-portal-panel-footer span {
+  display: inline-flex;
+  min-height: 1.75rem;
+  align-items: center;
+  padding: 0 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  color: rgba(248, 251, 255, 0.65);
+  background: rgba(255, 255, 255, 0.055);
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.account-dashboard {
+  min-width: 0;
+  padding: 1.6rem 1.6rem 1.4rem;
+  background: rgba(10, 15, 29, 0.88);
+}
+
+.account-dashboard-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.account-dashboard-header h2 {
+  margin: 0;
+  color: #f8fbff;
+  font-size: clamp(2rem, 3vw, 2.8rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.account-dashboard-header > div > p:last-child {
+  margin: 0.6rem 0 0;
+  color: rgba(248, 251, 255, 0.58);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.account-status-pill {
+  display: inline-flex;
+  min-height: 2rem;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 0.72rem;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.account-status-pill > span {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 12px currentColor;
+}
+
+.account-status-active {
+  border-color: rgba(119, 255, 228, 0.3);
+  color: #77ffe4;
+  background: rgba(119, 255, 228, 0.08);
+}
+
+.account-status-pending {
+  border-color: rgba(255, 210, 110, 0.3);
+  color: #ffd26e;
+  background: rgba(255, 210, 110, 0.08);
+}
+
+.account-status-inactive,
+.account-status-expired {
+  border-color: rgba(255, 142, 157, 0.3);
+  color: #ff9eac;
+  background: rgba(255, 101, 122, 0.075);
+}
+
+.account-dashboard-section {
+  margin-top: 0.8rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 1.15rem;
+  background: rgba(255, 255, 255, 0.038);
+}
+
+.account-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.account-section-heading > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.account-section-number {
+  display: grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  place-items: center;
+  border: 1px solid rgba(119, 255, 228, 0.18);
+  border-radius: 0.55rem;
+  color: #77ffe4;
+  background: rgba(119, 255, 228, 0.065);
+  font-size: 0.6rem;
+  font-weight: 850;
+}
+
+.account-section-heading h3 {
+  margin: 0;
+  color: #f8fbff;
+  font-size: 0.95rem;
+}
+
+.account-section-heading p {
+  margin: 0.18rem 0 0;
+  color: rgba(248, 251, 255, 0.46);
+  font-size: 0.72rem;
+}
+
+.account-identity-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.8rem;
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.account-avatar {
+  display: grid;
+  width: 2.7rem;
+  height: 2.7rem;
+  place-items: center;
+  border: 1px solid rgba(112, 215, 255, 0.24);
+  border-radius: 0.85rem;
+  color: #f8fbff;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(73, 187, 255, 0.3),
+      rgba(128, 101, 255, 0.3)
+    ),
+    rgba(255, 255, 255, 0.05);
+  font-weight: 850;
+}
+
+.account-identity-details {
+  min-width: 0;
+}
+
+.account-identity-details strong,
+.account-identity-details span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-identity-details strong {
+  color: #f8fbff;
+  font-size: 0.9rem;
+}
+
+.account-identity-details span {
+  margin-top: 0.18rem;
+  color: rgba(248, 251, 255, 0.5);
+  font-size: 0.74rem;
+}
+
+.account-verified-label,
+.account-license-label {
+  display: inline-flex;
+  min-height: 1.8rem;
+  align-items: center;
+  padding: 0 0.62rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 800;
+}
+
+.account-verified-label {
+  border: 1px solid rgba(112, 215, 255, 0.2);
+  color: #8edcff;
+  background: rgba(112, 215, 255, 0.07);
+}
+
+.account-license-active {
+  border: 1px solid rgba(119, 255, 228, 0.28);
+  color: #77ffe4;
+  background: rgba(119, 255, 228, 0.075);
+}
+
+.account-license-pending {
+  border: 1px solid rgba(255, 210, 110, 0.28);
+  color: #ffd26e;
+  background: rgba(255, 210, 110, 0.075);
+}
+
+.account-license-inactive,
+.account-license-expired {
+  border: 1px solid rgba(255, 142, 157, 0.28);
+  color: #ff9eac;
+  background: rgba(255, 101, 122, 0.075);
+}
+
+.account-license-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.account-license-item {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.account-license-item > span,
+.account-license-item > strong {
+  display: block;
+}
+
+.account-license-item > span {
+  color: rgba(248, 251, 255, 0.42);
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.account-license-item > strong {
+  margin-top: 0.32rem;
+  color: #f8fbff;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.account-license-key-item {
+  grid-column: 1 / -1;
+}
+
+.account-license-key-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.38rem;
+}
+
+.account-license-key-row > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #f8fbff;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.account-license-key-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.4rem;
+}
+
+.account-license-key-actions button {
+  min-height: 2rem;
+  padding: 0 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 999px;
+  color: rgba(248, 251, 255, 0.72);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.65rem;
+  font-weight: 750;
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    color 180ms ease;
+}
+
+.account-license-key-actions button:hover {
+  border-color: rgba(112, 215, 255, 0.28);
+  color: #f8fbff;
+  background: rgba(112, 215, 255, 0.07);
+}
+
+.account-empty-license {
+  padding: 0.9rem;
+  border: 1px dashed rgba(255, 255, 255, 0.13);
+  border-radius: 0.9rem;
+  text-align: center;
+}
+
+.account-empty-license strong {
+  color: #f8fbff;
+}
+
+.account-empty-license p {
+  margin: 0.35rem 0 0;
+  color: rgba(248, 251, 255, 0.48);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.account-download-panel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: center;
+  margin-top: 0.8rem;
+  padding: 0.95rem;
+  border: 1px solid rgba(112, 215, 255, 0.16);
+  border-radius: 1.15rem;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(73, 187, 255, 0.08),
+      rgba(128, 101, 255, 0.09)
+    ),
+    rgba(255, 255, 255, 0.025);
+}
+
+.account-download-icon {
+  display: grid;
+  width: 2.7rem;
+  height: 2.7rem;
+  place-items: center;
+  border: 1px solid rgba(112, 215, 255, 0.22);
+  border-radius: 0.85rem;
+  color: #8edcff;
+  background: rgba(112, 215, 255, 0.07);
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+
+.account-download-content h3 {
+  margin: 0;
+  color: #f8fbff;
+  font-size: 0.9rem;
+}
+
+.account-download-content p:last-child {
+  margin: 0.3rem 0 0;
+  color: rgba(248, 251, 255, 0.48);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.account-download-button {
+  min-height: 2.55rem;
+  max-width: 13.5rem;
+  padding: 0 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  color: #f8fbff;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(73, 187, 255, 0.48),
+      rgba(128, 101, 255, 0.48)
+    ),
+    rgba(255, 255, 255, 0.06);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.2;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    opacity 180ms ease;
+}
+
+.account-download-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.27);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.2);
+}
+
+.account-download-button:disabled {
+  cursor: not-allowed;
+  color: rgba(248, 251, 255, 0.5);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: none;
+  opacity: 0.78;
+}
+
+.account-portal-message {
+  margin-top: 0.8rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid;
+  border-radius: 0.85rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.account-portal-message-error {
+  border-color: rgba(255, 142, 157, 0.3);
+  color: #ffb2bd;
+  background: rgba(255, 101, 122, 0.075);
+}
+
+.account-dashboard-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.account-dashboard-footer p {
+  max-width: 31rem;
+  margin: 0;
+  color: rgba(248, 251, 255, 0.35);
+  font-size: 0.66rem;
+  line-height: 1.4;
+}
+
+.account-dashboard-footer > span {
+  display: inline-flex;
+  min-height: 1.8rem;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 0 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  color: rgba(248, 251, 255, 0.4);
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 0.62rem;
+  font-weight: 750;
+}
+
+.account-portal-page-footer {
+  width: min(100%, 72rem);
+  margin: 0.7rem auto 0;
+  padding-bottom: 0.25rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: rgba(248, 251, 255, 0.37);
+  font-size: 0.68rem;
+}
+
+.account-loading-panel {
+  width: min(100%, 28rem);
+  margin: auto;
+  padding: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 1.5rem;
+  background: rgba(10, 15, 29, 0.8);
+  text-align: center;
+  backdrop-filter: blur(24px);
+}
+
+.account-loading-panel img {
+  width: 3.6rem;
+  height: 3.6rem;
+  object-fit: contain;
+}
+
+.account-loading-panel h1 {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: -0.04em;
+}
+
+.account-loading-bar {
+  height: 0.35rem;
+  margin-top: 1.3rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.account-loading-bar span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    rgba(73, 187, 255, 0.75),
+    rgba(128, 101, 255, 0.75)
+  );
+  animation: accountLoading 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes accountLoading {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(150%);
+  }
+}
+
+@media (max-width: 920px) {
+  .account-portal-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .account-portal-information {
+    display: none;
+  }
+
+  .account-dashboard {
+    padding: 1.4rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .account-portal-page {
+    padding: 0.75rem 0.75rem 1rem;
+  }
+
+  .account-logout-top {
+    display: none;
+  }
+
+  .account-portal-shell {
+    margin-top: 0.75rem;
+    border-radius: 1.35rem;
+  }
+
+  .account-dashboard {
+    padding: 1.1rem;
+  }
+
+  .account-dashboard-header {
+    flex-direction: column;
+  }
+
+  .account-identity-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .account-verified-label {
+    grid-column: 1 / -1;
+    justify-self: flex-start;
+  }
+
+  .account-license-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .account-license-key-item {
+    grid-column: auto;
+  }
+
+  .account-license-key-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .account-license-key-actions {
+    width: 100%;
+  }
+
+  .account-license-key-actions button {
+    flex: 1;
+  }
+
+  .account-download-panel {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .account-download-button {
+    grid-column: 1 / -1;
+    width: 100%;
+    max-width: none;
+  }
+
+  .account-dashboard-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .account-dashboard-footer > span {
+    align-self: flex-start;
+  }
+
+  .account-portal-page-footer {
+    padding-inline: 0.3rem;
+  }
+}
+
+@media (max-height: 820px) and (min-width: 921px) {
+  .account-portal-page {
+    padding-block: 0.65rem 1rem;
+  }
+
+  .account-portal-shell {
+    margin-top: 0.55rem;
+  }
+
+  .account-portal-information {
+    padding-block: 1.25rem;
+  }
+
+  .account-portal-information-content {
+    padding-block: 1.15rem;
+  }
+
+  .account-portal-information h1 {
+    font-size: clamp(2.2rem, 3.8vw, 3.45rem);
+  }
+
+  .account-portal-description {
+    margin-top: 0.65rem;
+    font-size: 0.82rem;
+  }
+
+  .account-portal-feature-list {
+    gap: 0.5rem;
+    margin-top: 0.95rem;
+  }
+
+  .account-portal-feature p {
+    font-size: 0.7rem;
+  }
+
+  .account-dashboard {
+    padding-block: 1.15rem 1.25rem;
+  }
+
+  .account-dashboard-section {
+    padding: 0.85rem;
+  }
+
+  .account-download-panel {
+    padding: 0.8rem;
+  }
+}

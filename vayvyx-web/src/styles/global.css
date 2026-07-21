@@ -52,7 +52,13 @@ button:disabled {
   min-height: 100svh;
 }
 
-.home-page,
+.home-page {
+  position: relative;
+  min-height: 100svh;
+  overflow-x: hidden;
+  isolation: isolate;
+}
+
 .simple-page {
   position: relative;
   height: 100svh;
@@ -68,9 +74,21 @@ button:disabled {
   overflow: hidden;
   pointer-events: none;
   background:
-    radial-gradient(circle at 50% 50%, rgba(119, 255, 228, 0.08), transparent 28rem),
-    radial-gradient(circle at 20% 20%, rgba(112, 215, 255, 0.08), transparent 34rem),
-    radial-gradient(circle at 82% 26%, rgba(154, 124, 255, 0.1), transparent 34rem),
+    radial-gradient(
+      circle at 50% 50%,
+      rgba(119, 255, 228, 0.08),
+      transparent 28rem
+    ),
+    radial-gradient(
+      circle at 20% 20%,
+      rgba(112, 215, 255, 0.08),
+      transparent 34rem
+    ),
+    radial-gradient(
+      circle at 82% 26%,
+      rgba(154, 124, 255, 0.1),
+      transparent 34rem
+    ),
     linear-gradient(135deg, #050711, #080d1f 48%, #0f122a);
 }
 
@@ -89,8 +107,18 @@ button:disabled {
   left: -12rem;
   top: -12rem;
   background:
-    radial-gradient(circle at 32% 32%, rgba(255, 255, 255, 0.36), transparent 14%),
-    radial-gradient(circle, rgba(75, 210, 255, 0.8), rgba(75, 210, 255, 0.36) 42%, rgba(75, 210, 255, 0.06) 72%, transparent 84%);
+    radial-gradient(
+      circle at 32% 32%,
+      rgba(255, 255, 255, 0.36),
+      transparent 14%
+    ),
+    radial-gradient(
+      circle,
+      rgba(75, 210, 255, 0.8),
+      rgba(75, 210, 255, 0.36) 42%,
+      rgba(75, 210, 255, 0.06) 72%,
+      transparent 84%
+    );
   animation: orbOneFloat 28s ease-in-out infinite alternate;
 }
 
@@ -100,8 +128,18 @@ button:disabled {
   right: -16rem;
   top: -4rem;
   background:
-    radial-gradient(circle at 34% 32%, rgba(255, 255, 255, 0.32), transparent 14%),
-    radial-gradient(circle, rgba(155, 105, 255, 0.8), rgba(155, 105, 255, 0.38) 42%, rgba(155, 105, 255, 0.06) 72%, transparent 84%);
+    radial-gradient(
+      circle at 34% 32%,
+      rgba(255, 255, 255, 0.32),
+      transparent 14%
+    ),
+    radial-gradient(
+      circle,
+      rgba(155, 105, 255, 0.8),
+      rgba(155, 105, 255, 0.38) 42%,
+      rgba(155, 105, 255, 0.06) 72%,
+      transparent 84%
+    );
   animation: orbTwoFloat 32s ease-in-out infinite alternate;
 }
 
@@ -111,8 +149,18 @@ button:disabled {
   left: 34%;
   bottom: -20rem;
   background:
-    radial-gradient(circle at 34% 32%, rgba(255, 255, 255, 0.3), transparent 14%),
-    radial-gradient(circle, rgba(70, 255, 220, 0.76), rgba(70, 255, 220, 0.34) 42%, rgba(70, 255, 220, 0.055) 72%, transparent 84%);
+    radial-gradient(
+      circle at 34% 32%,
+      rgba(255, 255, 255, 0.3),
+      transparent 14%
+    ),
+    radial-gradient(
+      circle,
+      rgba(70, 255, 220, 0.76),
+      rgba(70, 255, 220, 0.34) 42%,
+      rgba(70, 255, 220, 0.055) 72%,
+      transparent 84%
+    );
   animation: orbThreeFloat 34s ease-in-out infinite alternate;
 }
 
@@ -123,8 +171,18 @@ button:disabled {
   top: 24%;
   opacity: 0.56;
   background:
-    radial-gradient(circle at 34% 32%, rgba(255, 255, 255, 0.28), transparent 14%),
-    radial-gradient(circle, rgba(95, 120, 255, 0.72), rgba(95, 120, 255, 0.32) 42%, rgba(95, 120, 255, 0.055) 72%, transparent 84%);
+    radial-gradient(
+      circle at 34% 32%,
+      rgba(255, 255, 255, 0.28),
+      transparent 14%
+    ),
+    radial-gradient(
+      circle,
+      rgba(95, 120, 255, 0.72),
+      rgba(95, 120, 255, 0.32) 42%,
+      rgba(95, 120, 255, 0.055) 72%,
+      transparent 84%
+    );
   animation: orbFourFloat 30s ease-in-out infinite alternate;
 }
 
@@ -240,10 +298,17 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  pointer-events: none;
 }
 
 .nav-right-only {
   justify-content: flex-end;
+}
+
+.top-nav nav {
+  display: flex;
+  gap: 0.75rem;
+  pointer-events: auto;
 }
 
 .brand-mini {
@@ -318,14 +383,13 @@ button:disabled {
   filter: drop-shadow(0 12px 28px rgba(63, 163, 255, 0.24));
 }
 
-.top-nav nav {
-  display: flex;
-  gap: 0.75rem;
-}
-
 .top-nav button,
 .back-button,
-.glass-card button {
+.glass-card button,
+.hero-primary-button,
+.hero-secondary-button,
+.account-primary-button,
+.account-secondary-button {
   min-height: 2.75rem;
   padding: 0 1.05rem;
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -342,21 +406,27 @@ button:disabled {
 
 .top-nav button:hover,
 .back-button:hover,
-.glass-card button:hover {
+.glass-card button:hover,
+.hero-primary-button:hover,
+.hero-secondary-button:hover,
+.account-primary-button:hover,
+.account-secondary-button:hover {
   transform: translateY(-1px);
   border-color: rgba(255, 255, 255, 0.28);
   box-shadow: 0 18px 54px rgba(0, 0, 0, 0.26);
 }
 
 .top-nav nav button:last-child,
-.glass-card button {
+.glass-card button,
+.hero-primary-button,
+.account-primary-button {
   background:
     linear-gradient(135deg, rgba(112, 215, 255, 0.34), rgba(154, 124, 255, 0.34)),
     rgba(255, 255, 255, 0.1);
 }
 
 .hero {
-  height: 100svh;
+  min-height: 100svh;
   display: grid;
   place-items: center;
   align-content: center;
@@ -436,9 +506,129 @@ h1 {
 .slogan {
   max-width: 42rem;
   margin: 0.85rem auto 0;
-  color: rgba(248, 251, 255, 0.72);
+  color: rgba(248, 251, 255, 0.74);
   font-size: clamp(1.05rem, 2vw, 1.5rem);
   line-height: 1.45;
+}
+
+.hero-status-line {
+  margin: 0.8rem 0 0;
+  color: rgba(248, 251, 255, 0.56);
+  font-size: 0.86rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+}
+
+.hero-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.55rem;
+}
+
+.hero-primary-button,
+.hero-secondary-button {
+  min-height: 3rem;
+  padding: 0 1.2rem;
+  font-weight: 760;
+}
+
+.public-section {
+  position: relative;
+  padding: 2rem 1.25rem 4.5rem;
+  scroll-margin-top: 6.5rem;
+}
+
+.public-section-inner {
+  width: min(100%, 72rem);
+  margin: 0 auto;
+}
+
+.public-intro {
+  width: min(100%, 48rem);
+  margin-bottom: 1.4rem;
+}
+
+.public-intro h2,
+.beta-panel h2 {
+  margin: 0;
+  color: #f8fbff;
+  font-size: clamp(2rem, 4.4vw, 3.6rem);
+  line-height: 1.02;
+  letter-spacing: -0.05em;
+}
+
+.public-intro p,
+.public-card p,
+.beta-panel p {
+  color: rgba(248, 251, 255, 0.72);
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.public-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1.4rem;
+}
+
+.public-card,
+.beta-panel {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(13, 18, 35, 0.58);
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(24px);
+}
+
+.public-card {
+  min-height: 12.5rem;
+  padding: 1.15rem;
+  border-radius: 1.35rem;
+}
+
+.public-card-number {
+  display: inline-flex;
+  margin-bottom: 1.2rem;
+  color: #77ffe4;
+  font-size: 0.78rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.public-card h3 {
+  margin: 0;
+  color: #f8fbff;
+  font-size: 1.35rem;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.public-card p {
+  margin: 0.8rem 0 0;
+}
+
+.beta-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1.5rem;
+  align-items: center;
+  margin-top: 1rem;
+  padding: 1.25rem 1.35rem;
+  border-radius: 1.45rem;
+}
+
+.beta-panel p {
+  max-width: 44rem;
+  margin: 0.85rem 0 0;
+}
+
+.beta-panel-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .simple-page {
@@ -643,106 +833,6 @@ textarea {
   letter-spacing: -0.01em;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .aurora-orb,
-  .background-grid {
-    animation: none;
-  }
-}
-
-@media (max-width: 720px) {
-  .top-nav {
-    left: 0.8rem;
-    right: 0.8rem;
-  }
-
-  .top-nav nav {
-    gap: 0.45rem;
-  }
-
-  .top-nav button {
-    min-height: 2.55rem;
-    padding: 0 0.75rem;
-    font-size: 0.9rem;
-  }
-
-  .icon-only-brand {
-    width: 3.1rem;
-    height: 3.1rem;
-    padding: 0;
-  }
-
-  .hero {
-    padding-top: 5.5rem;
-  }
-
-  h1 {
-    letter-spacing: -0.03em;
-  }
-
-  .eyebrow {
-    font-size: 0.66rem;
-    letter-spacing: 0.06em;
-  }
-
-  .glass-card {
-    width: min(100%, 27rem);
-    max-height: calc(100svh - 6.4rem);
-  }
-
-  .demo-card h1 {
-    max-width: 8.5ch;
-  }
-}
-
-@media (max-height: 760px) {
-  .glass-card {
-    width: min(100%, 28rem);
-    padding: 1rem;
-  }
-
-  .card-logo {
-    width: 2.85rem;
-    height: 2.85rem;
-    margin-bottom: 0.75rem;
-  }
-
-  .compact-card h1 {
-    font-size: clamp(2.3rem, 5vw, 3.6rem);
-  }
-
-  .demo-card h1 {
-    font-size: clamp(2.2rem, 4.5vw, 3.3rem);
-  }
-
-  .auth-mode-toggle {
-    margin-top: 0.8rem;
-  }
-
-  form {
-    gap: 0.62rem;
-    margin-top: 0.9rem;
-  }
-
-  input {
-    min-height: 2.65rem;
-  }
-
-  textarea {
-    min-height: 4.4rem;
-    max-height: 5.2rem;
-  }
-
-  .glass-card button {
-    min-height: 2.7rem;
-  }
-
-  .form-message {
-    margin-top: 0.7rem;
-    font-size: 0.84rem;
-  }
-}
-
 .account-screen {
   padding: 5.5rem 1.25rem 1.25rem;
 }
@@ -832,8 +922,9 @@ textarea {
 }
 
 .license-key {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
   font-size: 0.86rem;
 }
 
@@ -882,10 +973,6 @@ textarea {
 .account-primary-button {
   flex: 1;
   min-width: 12rem;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background:
-    linear-gradient(135deg, rgba(112, 215, 255, 0.34), rgba(154, 124, 255, 0.34)),
-    rgba(255, 255, 255, 0.1);
 }
 
 .account-secondary-button {
@@ -893,7 +980,80 @@ textarea {
   background: rgba(255, 255, 255, 0.07);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .aurora-orb,
+  .background-grid {
+    animation: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .public-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .public-card {
+    min-height: auto;
+  }
+
+  .beta-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .beta-panel-actions {
+    justify-content: flex-start;
+  }
+}
+
 @media (max-width: 720px) {
+  .top-nav {
+    left: 0.8rem;
+    right: 0.8rem;
+  }
+
+  .top-nav nav {
+    gap: 0.45rem;
+  }
+
+  .top-nav button {
+    min-height: 2.55rem;
+    padding: 0 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  .icon-only-brand {
+    width: 3.1rem;
+    height: 3.1rem;
+    padding: 0;
+  }
+
+  .hero {
+    padding-top: 5.5rem;
+  }
+
+  h1 {
+    letter-spacing: -0.03em;
+  }
+
+  .eyebrow {
+    font-size: 0.66rem;
+    letter-spacing: 0.06em;
+  }
+
+  .hero-status-line {
+    max-width: 18rem;
+    line-height: 1.5;
+  }
+
+  .glass-card {
+    width: min(100%, 27rem);
+    max-height: calc(100svh - 6.4rem);
+  }
+
+  .demo-card h1 {
+    max-width: 8.5ch;
+  }
+
   .account-card {
     width: min(100%, 27rem);
     max-height: calc(100svh - 6.4rem);
@@ -910,5 +1070,78 @@ textarea {
 
   .account-actions {
     display: grid;
+  }
+}
+
+@media (max-width: 560px) {
+  .top-nav nav {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .top-nav button:first-child {
+    display: none;
+  }
+
+  .hero-actions,
+  .beta-panel-actions {
+    width: 100%;
+  }
+
+  .hero-primary-button,
+  .hero-secondary-button {
+    flex: 1;
+  }
+
+  .public-section {
+    padding-inline: 1rem;
+  }
+}
+
+@media (max-height: 760px) {
+  .glass-card {
+    width: min(100%, 28rem);
+    padding: 1rem;
+  }
+
+  .card-logo {
+    width: 2.85rem;
+    height: 2.85rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .compact-card h1 {
+    font-size: clamp(2.3rem, 5vw, 3.6rem);
+  }
+
+  .demo-card h1 {
+    font-size: clamp(2.2rem, 4.5vw, 3.3rem);
+  }
+
+  .auth-mode-toggle {
+    margin-top: 0.8rem;
+  }
+
+  form {
+    gap: 0.62rem;
+    margin-top: 0.9rem;
+  }
+
+  input {
+    min-height: 2.65rem;
+  }
+
+  textarea {
+    min-height: 4.4rem;
+    max-height: 5.2rem;
+  }
+
+  .glass-card button {
+    min-height: 2.7rem;
+  }
+
+  .form-message {
+    margin-top: 0.7rem;
+    font-size: 0.84rem;
   }
 }

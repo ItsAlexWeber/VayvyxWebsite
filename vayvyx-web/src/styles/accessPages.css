@@ -1,0 +1,661 @@
+.access-page {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 100svh;
+  flex-direction: column;
+  padding: 1rem 1.25rem 0.75rem;
+  color: #f8fbff;
+  isolation: isolate;
+}
+
+.access-back-button {
+  position: relative;
+  z-index: 5;
+  align-self: flex-start;
+  display: inline-flex;
+  min-height: 2.65rem;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  color: rgba(248, 251, 255, 0.88);
+  background: rgba(11, 17, 33, 0.58);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(20px);
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease;
+}
+
+.access-back-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(22, 31, 53, 0.72);
+}
+
+.access-layout {
+  width: min(100%, 72rem);
+  margin: 0.75rem auto 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(22rem, 0.95fr);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 1.75rem;
+  background: rgba(7, 11, 23, 0.54);
+  box-shadow: 0 30px 110px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(26px);
+}
+
+.access-information-panel,
+.access-form-panel {
+  position: relative;
+  min-width: 0;
+}
+
+.access-information-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 1.65rem 2rem 1.4rem;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 20% 20%,
+      rgba(68, 224, 255, 0.16),
+      transparent 20rem
+    ),
+    radial-gradient(
+      circle at 85% 75%,
+      rgba(132, 103, 255, 0.18),
+      transparent 24rem
+    ),
+    linear-gradient(
+      145deg,
+      rgba(18, 42, 58, 0.78),
+      rgba(17, 24, 49, 0.86)
+    );
+}
+
+.access-information-panel::before {
+  position: absolute;
+  inset: 0;
+  content: "";
+  opacity: 0.15;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.08) 1px,
+      transparent 1px
+    );
+  background-size: 52px 52px;
+  mask-image: linear-gradient(to bottom, black, transparent);
+}
+
+.access-brand,
+.access-information-content,
+.access-panel-footer {
+  position: relative;
+  z-index: 1;
+}
+
+.access-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.access-brand-logo {
+  display: grid;
+  width: 2.55rem;
+  height: 2.55rem;
+  place-items: center;
+  overflow: hidden;
+  clip-path: polygon(
+    25% 5%,
+    75% 5%,
+    100% 50%,
+    75% 95%,
+    25% 95%,
+    0% 50%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background:
+    linear-gradient(
+      135deg,
+      rgba(112, 215, 255, 0.3),
+      rgba(154, 124, 255, 0.32)
+    ),
+    rgba(255, 255, 255, 0.08);
+}
+
+.access-brand-logo img {
+  display: block;
+  width: 68%;
+  height: 68%;
+  object-fit: contain;
+}
+
+.access-information-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  padding: 1.75rem 0 1.35rem;
+}
+
+.access-eyebrow {
+  margin: 0 0 0.65rem;
+  color: #77ffe4;
+  font-size: 0.69rem;
+  font-weight: 850;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+}
+
+.access-information-content h1 {
+  max-width: 10ch;
+  margin: 0;
+  color: #f8fbff;
+  font-size: clamp(2.55rem, 4.7vw, 4.35rem);
+  line-height: 0.98;
+  letter-spacing: -0.058em;
+}
+
+.access-information-content-demo h1 {
+  max-width: 12ch;
+  font-size: clamp(2.4rem, 4.25vw, 3.85rem);
+}
+
+.access-description {
+  max-width: 36rem;
+  margin: 0.9rem 0 0;
+  color: rgba(248, 251, 255, 0.71);
+  font-size: 0.94rem;
+  line-height: 1.58;
+}
+
+.access-feature-list {
+  display: grid;
+  gap: 0.72rem;
+  margin-top: 1.35rem;
+}
+
+.access-feature {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.access-feature-icon {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(119, 255, 228, 0.22);
+  border-radius: 0.62rem;
+  color: #77ffe4;
+  background: rgba(119, 255, 228, 0.08);
+  font-size: 0.64rem;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+}
+
+.access-feature strong {
+  display: block;
+  color: #f8fbff;
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.access-feature p {
+  margin: 0.18rem 0 0;
+  color: rgba(248, 251, 255, 0.6);
+  font-size: 0.8rem;
+  line-height: 1.42;
+}
+
+.access-panel-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.access-panel-footer span {
+  display: inline-flex;
+  min-height: 1.75rem;
+  align-items: center;
+  padding: 0 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 999px;
+  color: rgba(248, 251, 255, 0.65);
+  background: rgba(255, 255, 255, 0.055);
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.access-form-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 1.75rem 2rem;
+  background: rgba(10, 15, 29, 0.86);
+}
+
+.access-form-panel-demo {
+  padding-block: 1.4rem;
+}
+
+.access-form-header h2 {
+  margin: 0;
+  color: #f8fbff;
+  font-size: clamp(2rem, 3vw, 2.75rem);
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.access-form-header > p:last-child {
+  margin: 0.65rem 0 0;
+  color: rgba(248, 251, 255, 0.63);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.access-mobile-logo {
+  display: none;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 1rem;
+}
+
+.access-mobile-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.access-mode-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  margin-top: 1.1rem;
+  padding: 0.3rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.access-mode-toggle button {
+  min-height: 2.45rem;
+  padding: 0 0.8rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: rgba(248, 251, 255, 0.62);
+  background: transparent;
+  font-weight: 750;
+  transition:
+    color 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease;
+}
+
+.access-mode-toggle button:hover {
+  color: #f8fbff;
+}
+
+.access-mode-toggle button.active {
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #f8fbff;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(112, 215, 255, 0.25),
+      rgba(154, 124, 255, 0.26)
+    ),
+    rgba(255, 255, 255, 0.07);
+}
+
+.access-form {
+  display: grid;
+  gap: 0.72rem;
+  margin-top: 1.05rem;
+}
+
+.access-form-demo {
+  gap: 0.58rem;
+  margin-top: 0.9rem;
+}
+
+.access-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.access-field > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: rgba(248, 251, 255, 0.82);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.access-optional-label {
+  color: rgba(248, 251, 255, 0.38);
+  font-size: 0.65rem;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.access-field input,
+.access-field textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 0.85rem;
+  outline: none;
+  color: #f8fbff;
+  background: rgba(255, 255, 255, 0.055);
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.access-field input {
+  min-height: 2.7rem;
+  padding: 0 0.85rem;
+}
+
+.access-field textarea {
+  min-height: 4.45rem;
+  max-height: 7rem;
+  padding: 0.75rem 0.85rem;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.access-field input::placeholder,
+.access-field textarea::placeholder {
+  color: rgba(248, 251, 255, 0.36);
+}
+
+.access-field input:focus,
+.access-field textarea:focus {
+  border-color: rgba(112, 215, 255, 0.5);
+  background: rgba(255, 255, 255, 0.075);
+  box-shadow: 0 0 0 3px rgba(112, 215, 255, 0.09);
+}
+
+.access-field input:disabled,
+.access-field textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.access-field small {
+  color: rgba(248, 251, 255, 0.44);
+  font-size: 0.66rem;
+  line-height: 1.35;
+}
+
+.access-message {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid;
+  border-radius: 0.8rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.access-message-success {
+  border-color: rgba(119, 255, 228, 0.28);
+  color: #a2ffed;
+  background: rgba(119, 255, 228, 0.075);
+}
+
+.access-message-error {
+  border-color: rgba(255, 142, 157, 0.3);
+  color: #ffb2bd;
+  background: rgba(255, 101, 122, 0.075);
+}
+
+.access-primary-button,
+.access-secondary-button {
+  width: 100%;
+  min-height: 2.8rem;
+  padding: 0 1rem;
+  border-radius: 999px;
+  color: #f8fbff;
+  font-weight: 800;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    opacity 180ms ease;
+}
+
+.access-primary-button {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background:
+    linear-gradient(
+      135deg,
+      rgba(73, 187, 255, 0.58),
+      rgba(128, 101, 255, 0.58)
+    ),
+    rgba(255, 255, 255, 0.08);
+  box-shadow: 0 15px 40px rgba(58, 124, 255, 0.14);
+}
+
+.access-secondary-button {
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.access-primary-button:hover:not(:disabled),
+.access-secondary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.27);
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.22);
+}
+
+.access-primary-button:disabled,
+.access-secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.access-form-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+  color: rgba(248, 251, 255, 0.38);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.access-form-divider::before,
+.access-form-divider::after {
+  height: 1px;
+  flex: 1;
+  content: "";
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.access-security-note {
+  margin: 0.6rem auto 0;
+  color: rgba(248, 251, 255, 0.38);
+  font-size: 0.66rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.access-page-footer {
+  width: min(100%, 72rem);
+  margin: 0.6rem auto 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: rgba(248, 251, 255, 0.37);
+  font-size: 0.68rem;
+}
+
+@media (max-width: 900px) {
+  .access-page {
+    padding-top: 0.85rem;
+  }
+
+  .access-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .access-information-panel {
+    display: none;
+  }
+
+  .access-form-panel,
+  .access-form-panel-demo {
+    width: 100%;
+    padding: 1.75rem;
+  }
+
+  .access-mobile-logo {
+    display: block;
+  }
+}
+
+@media (max-width: 560px) {
+  .access-page {
+    padding: 0.75rem;
+  }
+
+  .access-back-button {
+    min-height: 2.5rem;
+    padding: 0 0.8rem;
+    font-size: 0.82rem;
+  }
+
+  .access-layout {
+    margin-top: 0.75rem;
+    border-radius: 1.35rem;
+  }
+
+  .access-form-panel,
+  .access-form-panel-demo {
+    padding: 1.25rem;
+  }
+
+  .access-form-header h2 {
+    font-size: 2.15rem;
+  }
+
+  .access-mode-toggle button {
+    font-size: 0.8rem;
+  }
+
+  .access-page-footer {
+    padding-inline: 0.3rem;
+  }
+}
+
+@media (max-height: 820px) and (min-width: 901px) {
+  .access-page {
+    padding-block: 0.65rem;
+  }
+
+  .access-back-button {
+    min-height: 2.45rem;
+  }
+
+  .access-layout {
+    margin-top: 0.55rem;
+  }
+
+  .access-information-panel {
+    padding-block: 1.25rem;
+  }
+
+  .access-information-content {
+    padding-block: 1.15rem;
+  }
+
+  .access-information-content h1 {
+    font-size: clamp(2.35rem, 4.2vw, 3.7rem);
+  }
+
+  .access-information-content-demo h1 {
+    font-size: clamp(2.2rem, 3.8vw, 3.35rem);
+  }
+
+  .access-description {
+    margin-top: 0.65rem;
+    font-size: 0.86rem;
+  }
+
+  .access-feature-list {
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+  }
+
+  .access-feature p {
+    font-size: 0.74rem;
+  }
+
+  .access-form-panel {
+    padding-block: 1.15rem;
+  }
+
+  .access-form-panel-demo {
+    padding-block: 0.95rem;
+  }
+
+  .access-form-header > p:last-child {
+    margin-top: 0.45rem;
+  }
+
+  .access-form {
+    gap: 0.55rem;
+    margin-top: 0.8rem;
+  }
+
+  .access-form-demo {
+    gap: 0.45rem;
+    margin-top: 0.7rem;
+  }
+
+  .access-field input {
+    min-height: 2.5rem;
+  }
+
+  .access-field textarea {
+    min-height: 3.75rem;
+  }
+
+  .access-primary-button,
+  .access-secondary-button {
+    min-height: 2.6rem;
+  }
+
+  .access-form-divider {
+    margin-block: 0.55rem;
+  }
+
+  .access-security-note {
+    margin-top: 0.45rem;
+  }
+
+  .access-page-footer {
+    margin-top: 0.4rem;
+  }
+}

@@ -29,3 +29,8 @@ dist-ssr
 .env.development
 .env.production
 .env.production.local
+
+# Zipped build/export files
+*.zip
+*.7z
+*.rar
