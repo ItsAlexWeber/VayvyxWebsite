@@ -402,25 +402,40 @@ describe("Phase 2 safety helpers", () => {
 
   it("lists one existing INBOX message without accidental filters", async () => {
     const searchCalls: unknown[] = [];
-    const fetchCalls: unknown[] = [];
+    const fetchAllCalls: unknown[] = [];
     const provider = messageProvider({
       exists: 1,
       searchCalls,
-      fetchCalls,
+      fetchAllCalls,
       messages: [messageFixture({ seq: 1, uid: 101 })],
     });
 
     const page = await provider.listMessages(account, defaultMessageInput());
 
-    expect(searchCalls).toEqual([]);
-    expect(fetchCalls).toEqual([
+    expect(searchCalls).toEqual([{ query: { all: true }, options: { uid: true } }]);
+    expect(fetchAllCalls).toEqual([
       {
-        range: "1:1",
-        options: { uid: false },
+        range: [101],
+        options: { uid: true },
       },
     ]);
     expect(page.messages).toHaveLength(1);
     expect(page.messages[0]?.uid).toBe(101);
+  });
+
+  it("fetches UID 25 even when its sequence number is 1", async () => {
+    const fetchAllCalls: unknown[] = [];
+    const provider = messageProvider({
+      exists: 1,
+      fetchAllCalls,
+      searchResult: [25],
+      messages: [messageFixture({ seq: 1, uid: 25 })],
+    });
+
+    const page = await provider.listMessages(account, defaultMessageInput());
+
+    expect(fetchAllCalls).toEqual([{ range: [25], options: { uid: true } }]);
+    expect(page.messages.map((message) => message.uid)).toEqual([25]);
   });
 
   it("logs safe message-list diagnostics without message content", async () => {
@@ -433,10 +448,10 @@ describe("Phase 2 safety helpers", () => {
     await provider.listMessages(account, defaultMessageInput());
 
     expect(infoSpy).toHaveBeenCalledWith("Vayvyx Mail message listing", {
-      mailAccountId: account.id,
       folder: "INBOX",
       mailboxExists: 1,
-      searchResultCount: null,
+      matchingUids: 1,
+      pageUids: 1,
       fetchResultCount: 1,
     });
     expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("Message 101");
@@ -477,11 +492,11 @@ describe("Phase 2 safety helpers", () => {
 
   it("uses UID search and fetch for unread filters", async () => {
     const searchCalls: unknown[] = [];
-    const fetchCalls: unknown[] = [];
+    const fetchAllCalls: unknown[] = [];
     const provider = messageProvider({
       exists: 5,
       searchCalls,
-      fetchCalls,
+      fetchAllCalls,
       searchResult: [103, 105],
       messages: [
         messageFixture({ seq: 3, uid: 103, flags: [] }),
@@ -495,18 +510,18 @@ describe("Phase 2 safety helpers", () => {
     });
 
     expect(searchCalls).toEqual([{ query: { seen: false }, options: { uid: true } }]);
-    expect(fetchCalls).toEqual([{ range: [105, 103], options: { uid: true } }]);
+    expect(fetchAllCalls).toEqual([{ range: [105, 103], options: { uid: true } }]);
     expect(page.messages.map((message) => message.uid)).toEqual([105, 103]);
     expect(page.messages.every((message) => message.unread)).toBe(true);
   });
 
   it("uses UID search and fetch for flagged filters", async () => {
     const searchCalls: unknown[] = [];
-    const fetchCalls: unknown[] = [];
+    const fetchAllCalls: unknown[] = [];
     const provider = messageProvider({
       exists: 5,
       searchCalls,
-      fetchCalls,
+      fetchAllCalls,
       searchResult: [201],
       messages: [messageFixture({ seq: 2, uid: 201, flags: new Set(["\\Flagged"]) })],
     });
@@ -517,31 +532,32 @@ describe("Phase 2 safety helpers", () => {
     });
 
     expect(searchCalls).toEqual([{ query: { flagged: true }, options: { uid: true } }]);
-    expect(fetchCalls).toEqual([{ range: [201], options: { uid: true } }]);
+    expect(fetchAllCalls).toEqual([{ range: [201], options: { uid: true } }]);
     expect(page.messages[0]?.uid).toBe(201);
     expect(page.messages[0]?.flagged).toBe(true);
   });
 
-  it("returns an empty page for an empty folder without searching", async () => {
+  it("returns an empty page for an empty folder", async () => {
     const searchCalls: unknown[] = [];
-    const fetchCalls: unknown[] = [];
+    const fetchAllCalls: unknown[] = [];
     const provider = messageProvider({
       exists: 0,
       searchCalls,
-      fetchCalls,
+      fetchAllCalls,
       messages: [],
     });
 
     const page = await provider.listMessages(account, defaultMessageInput());
 
     expect(page).toEqual({ messages: [], nextCursor: null });
-    expect(searchCalls).toEqual([]);
-    expect(fetchCalls).toEqual([]);
+    expect(searchCalls).toEqual([{ query: { all: true }, options: { uid: true } }]);
+    expect(fetchAllCalls).toEqual([]);
   });
 
   it("returns a typed error when message retrieval fails", async () => {
     const provider = messageProvider({
       exists: 1,
+      searchResult: [25],
       fetchError: new Error("raw fetch failure"),
       messages: [],
     });
@@ -553,6 +569,115 @@ describe("Phase 2 safety helpers", () => {
     });
   });
 
+  it("throws a sanitized fetch failure when UID matches fetch no messages", async () => {
+    const provider = messageProvider({
+      exists: 1,
+      searchResult: [25],
+      fetchedMessages: [],
+      messages: [messageFixture({ seq: 1, uid: 25 })],
+    });
+
+    await expect(provider.listMessages(account, defaultMessageInput())).rejects.toMatchObject({
+      status: 502,
+      code: "MAIL_FETCH_FAILED",
+      message: "Mailbox messages could not be fetched.",
+    });
+  });
+
+  it("uses UID mode for message actions", async () => {
+    const calls: unknown[] = [];
+    const provider = new ImapSmtpMailProvider({
+      withImapClient: async (_account, operation) =>
+        operation({
+          mailboxOpen: async () => ({}),
+          fetchOne: async (
+            uid: number,
+            _query: Record<string, unknown>,
+            options: Record<string, unknown>
+          ) => {
+            calls.push({ method: "fetchOne", uid, options });
+            return {
+              ...messageFixture({ seq: 1, uid }),
+              source: Buffer.from(
+                [
+                  "From: Sender <sender@example.com>",
+                  "To: support@vayvyx.com",
+                  "Subject: Attachment",
+                  "MIME-Version: 1.0",
+                  'Content-Type: multipart/mixed; boundary="vayvyx"',
+                  "",
+                  "--vayvyx",
+                  "Content-Type: text/plain",
+                  "",
+                  "Hello",
+                  "--vayvyx",
+                  'Content-Type: text/plain; name="a.txt"',
+                  'Content-Disposition: attachment; filename="a.txt"',
+                  "Content-Transfer-Encoding: base64",
+                  "",
+                  "dGVzdA==",
+                  "--vayvyx--",
+                ].join("\r\n")
+              ),
+            };
+          },
+          download: async (
+            uid: number,
+            part: string,
+            options: Record<string, unknown>
+          ) => {
+            calls.push({ method: "download", uid, part, options });
+            return {
+              content: Buffer.from("test"),
+              meta: { contentType: "text/plain" },
+            };
+          },
+          messageFlagsAdd: async (
+            uid: number,
+            flags: string[],
+            options: Record<string, unknown>
+          ) => {
+            calls.push({ method: "messageFlagsAdd", uid, flags, options });
+          },
+          messageFlagsRemove: async (
+            uid: number,
+            flags: string[],
+            options: Record<string, unknown>
+          ) => {
+            calls.push({ method: "messageFlagsRemove", uid, flags, options });
+          },
+          messageMove: async (
+            uid: number,
+            destination: string,
+            options: Record<string, unknown>
+          ) => {
+            calls.push({ method: "messageMove", uid, destination, options });
+          },
+        }),
+      createSmtpTransport: async () => ({}) as never,
+    });
+
+    await provider.getMessage(account, "INBOX", 25);
+    await provider.getAttachment(account, "INBOX", 25, "1");
+    await provider.setRead(account, "INBOX", 25, true);
+    await provider.setRead(account, "INBOX", 25, false);
+    await provider.setFlagged(account, "INBOX", 25, true);
+    await provider.setFlagged(account, "INBOX", 25, false);
+    await provider.moveMessage(account, "INBOX", 25, "Archive");
+
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        { method: "fetchOne", uid: 25, options: { uid: true } },
+        { method: "download", uid: 25, part: "1", options: { uid: true } },
+        { method: "messageFlagsAdd", uid: 25, flags: ["\\Seen"], options: { uid: true } },
+        { method: "messageFlagsRemove", uid: 25, flags: ["\\Seen"], options: { uid: true } },
+        { method: "messageFlagsAdd", uid: 25, flags: ["\\Flagged"], options: { uid: true } },
+        { method: "messageFlagsRemove", uid: 25, flags: ["\\Flagged"], options: { uid: true } },
+        { method: "messageMove", uid: 25, destination: "Archive", options: { uid: true } },
+      ])
+    );
+  });
+
   it("releases mailbox locks after failed message retrieval", async () => {
     const events: string[] = [];
     const provider = new ImapSmtpMailProvider({
@@ -561,13 +686,10 @@ describe("Phase 2 safety helpers", () => {
         try {
           return await operation({
             mailboxOpen: async () => ({ exists: 1 }),
-            search: async () => [],
-            fetch: () =>
-              (async function* () {
-                const shouldYield = Boolean("");
-                if (shouldYield) yield {};
-                throw new Error("raw fetch failure");
-              })(),
+            search: async () => [25],
+            fetchAll: async () => {
+              throw new Error("raw fetch failure");
+            },
           });
         } finally {
           events.push("release");
@@ -770,8 +892,9 @@ function messageProvider(options: {
   exists: number;
   messages: Array<Record<string, unknown>>;
   searchResult?: number[] | false;
+  fetchedMessages?: Array<Record<string, unknown>>;
   searchCalls?: unknown[];
-  fetchCalls?: unknown[];
+  fetchAllCalls?: unknown[];
   fetchError?: Error;
 }) {
   return new ImapSmtpMailProvider({
@@ -781,28 +904,22 @@ function messageProvider(options: {
           expect(path).toBe("INBOX");
           return { exists: options.exists };
         },
+        mailbox: { exists: options.exists },
         search: async (
           query: Record<string, unknown>,
           searchOptions?: { uid?: boolean }
         ) => {
           options.searchCalls?.push({ query, options: searchOptions });
-          return options.searchResult ?? [];
+          return options.searchResult ?? options.messages.map((message) => Number(message.uid));
         },
-        fetch: (
-          range: string | number[],
+        fetchAll: async (
+          range: number[],
           _query: Record<string, unknown>,
           fetchOptions?: { uid?: boolean }
         ) => {
-          options.fetchCalls?.push({ range, options: fetchOptions });
-          const selected = selectFetchedMessages(options.messages, range);
-          const fetchError = options.fetchError;
-
-          return (async function* () {
-            if (fetchError) throw fetchError;
-            for (const message of selected) {
-              yield message;
-            }
-          })();
+          options.fetchAllCalls?.push({ range, options: fetchOptions });
+          if (options.fetchError) throw options.fetchError;
+          return options.fetchedMessages ?? selectFetchedMessages(options.messages, range);
         },
       }),
     createSmtpTransport: async () => ({}) as never,
@@ -811,18 +928,10 @@ function messageProvider(options: {
 
 function selectFetchedMessages(
   messages: Array<Record<string, unknown>>,
-  range: string | number[]
+  range: number[]
 ) {
-  if (Array.isArray(range)) {
-    const allowed = new Set(range);
-    return messages.filter((message) => allowed.has(Number(message.uid)));
-  }
-
-  const [start, end] = range.split(":").map((value) => Number(value));
-  return messages.filter((message) => {
-    const seq = Number(message.seq);
-    return seq >= start && seq <= end;
-  });
+  const allowed = new Set(range);
+  return messages.filter((message) => allowed.has(Number(message.uid)));
 }
 
 function messageFixture(input: {

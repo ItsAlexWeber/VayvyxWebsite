@@ -11,7 +11,7 @@ import type {
 } from "./mailApiTypes.js";
 import { sanitizeEmailHtml, stripHtmlToPreview } from "./mailSanitizer.js";
 import { sanitizeAttachmentFilename } from "./filename.js";
-import { HttpError } from "./httpError.js";
+import { HttpError, isHttpError } from "./httpError.js";
 
 export type MessageListInput = {
   folder: string;
@@ -125,50 +125,73 @@ export class ImapSmtpMailProvider implements MailProvider {
   async listMessages(account: MailAccountPrivate, input: MessageListInput) {
     return this.deps.withImapClient(account, async (client) => {
       const imap = client as {
+        mailbox?: { exists?: number };
         mailboxOpen: (path: string) => Promise<{ exists: number }>;
         search: (query: Record<string, unknown>, options?: { uid?: boolean }) => Promise<number[] | false>;
-        fetch: (
-          range: string | number[],
+        fetchAll: (
+          range: number[],
           query: Record<string, unknown>,
           options?: { uid?: boolean }
-        ) => AsyncIterable<Record<string, unknown>>;
+        ) => Promise<Record<string, unknown>[]>;
       };
       const mailbox = await imap.mailboxOpen(input.folder);
-      const mailboxExists = Number(mailbox.exists) || 0;
-      const messages: MailMessageSummary[] = [];
-      let searchResultCount: number | null = null;
+      const mailboxExists =
+        Number(imap.mailbox?.exists ?? mailbox.exists) || 0;
+      let matchingUidCount = 0;
+      let pageUidCount = 0;
       let fetchResultCount = 0;
 
       try {
-        const selection = await selectMessagePage(imap, input, mailboxExists);
-        searchResultCount = selection.searchResultCount;
+        const criteria = buildSearchCriteria(input);
+        const matching = await imap.search(criteria, { uid: true });
+        const matchingUids = Array.isArray(matching) ? matching : [];
+        matchingUidCount = matchingUids.length;
+        const orderedUids = [...matchingUids].sort((a, b) =>
+          input.sortDirection === "asc" ? a - b : b - a
+        );
+        const pageUids = paginateUids(orderedUids, input);
+        pageUidCount = pageUids.length;
+        const fetchedMessages =
+          pageUids.length === 0
+            ? []
+            : await imap.fetchAll(
+                pageUids,
+                {
+                  uid: true,
+                  envelope: true,
+                  flags: true,
+                  internalDate: true,
+                  size: true,
+                  bodyStructure: true,
+                },
+                { uid: true }
+              );
+        fetchResultCount = fetchedMessages.length;
 
-        if (selection.range) {
-          for await (const item of imap.fetch(
-            selection.range,
-            {
-              uid: true,
-              envelope: true,
-              flags: true,
-              bodyStructure: true,
-              source: { maxLength: 4096 },
-            },
-            { uid: selection.rangeUsesUid }
-          )) {
-            fetchResultCount += 1;
-            messages.push(toSummary(account.id, input.folder, item));
-          }
+        if (
+          mailboxExists > 0 &&
+          matchingUids.length > 0 &&
+          fetchedMessages.length === 0
+        ) {
+          throw new HttpError(
+            502,
+            "MAIL_FETCH_FAILED",
+            "Mailbox messages could not be fetched."
+          );
         }
 
+        const messages = fetchedMessages.map((item) =>
+          toSummary(account.id, input.folder, item)
+        );
         messages.sort((a, b) =>
           input.sortDirection === "asc" ? a.uid - b.uid : b.uid - a.uid
         );
 
         logMessageListDiagnostic({
-          mailAccountId: account.id,
           folder: input.folder,
           mailboxExists,
-          searchResultCount,
+          matchingUidCount,
+          pageUidCount,
           fetchResultCount,
         });
 
@@ -181,12 +204,16 @@ export class ImapSmtpMailProvider implements MailProvider {
         };
       } catch (error) {
         logMessageListDiagnostic({
-          mailAccountId: account.id,
           folder: input.folder,
           mailboxExists,
-          searchResultCount,
+          matchingUidCount,
+          pageUidCount,
           fetchResultCount,
         });
+
+        if (isHttpError(error)) {
+          throw error;
+        }
 
         throw new HttpError(
           502,
@@ -331,17 +358,7 @@ export function normalizeSpecialUse(value: unknown): MailFolder["specialUse"] {
   return "custom";
 }
 
-async function selectMessagePage(
-  imap: {
-    search: (query: Record<string, unknown>, options?: { uid?: boolean }) => Promise<number[] | false>;
-  },
-  input: MessageListInput,
-  mailboxExists: number
-): Promise<{
-  range: string | number[] | null;
-  rangeUsesUid: boolean;
-  searchResultCount: number | null;
-}> {
+function buildSearchCriteria(input: MessageListInput) {
   const query: Record<string, unknown> = {};
   if (input.unreadOnly) query.seen = false;
   if (input.flaggedOnly) query.flagged = true;
@@ -349,62 +366,31 @@ async function selectMessagePage(
     query.or = [{ subject: input.search }, { body: input.search }];
   }
 
-  const hasFilters = Object.keys(query).length > 0;
+  if (Object.keys(query).length === 0) query.all = true;
+  return query;
+}
 
-  if (hasFilters || input.cursor) {
-    const found = await imap.search(hasFilters ? query : { all: true }, {
-      uid: true,
-    });
-    const uids = Array.isArray(found) ? found : [];
-    const sorted = [...uids].sort((a, b) =>
-      input.sortDirection === "asc" ? a - b : b - a
-    );
-    const afterCursor = input.cursor
-      ? sorted.filter((uid) =>
-          input.sortDirection === "asc" ? uid > input.cursor! : uid < input.cursor!
-        )
-      : sorted;
-    const page = afterCursor.slice(0, input.limit);
-
-    return {
-      range: page.length > 0 ? page : null,
-      rangeUsesUid: true,
-      searchResultCount: uids.length,
-    };
-  }
-
-  if (mailboxExists <= 0) {
-    return { range: null, rangeUsesUid: false, searchResultCount: null };
-  }
-
-  const start =
-    input.sortDirection === "asc"
-      ? 1
-      : Math.max(1, mailboxExists - input.limit + 1);
-  const end =
-    input.sortDirection === "asc"
-      ? Math.min(mailboxExists, input.limit)
-      : mailboxExists;
-
-  return {
-    range: `${start}:${end}`,
-    rangeUsesUid: false,
-    searchResultCount: null,
-  };
+function paginateUids(uids: number[], input: MessageListInput) {
+  const afterCursor = input.cursor
+    ? uids.filter((uid) =>
+        input.sortDirection === "asc" ? uid > input.cursor! : uid < input.cursor!
+      )
+    : uids;
+  return afterCursor.slice(0, input.limit);
 }
 
 function logMessageListDiagnostic(input: {
-  mailAccountId: string;
   folder: string;
   mailboxExists: number;
-  searchResultCount: number | null;
+  matchingUidCount: number;
+  pageUidCount: number;
   fetchResultCount: number;
 }) {
   console.info("Vayvyx Mail message listing", {
-    mailAccountId: input.mailAccountId,
     folder: input.folder,
     mailboxExists: input.mailboxExists,
-    searchResultCount: input.searchResultCount,
+    matchingUids: input.matchingUidCount,
+    pageUids: input.pageUidCount,
     fetchResultCount: input.fetchResultCount,
   });
 }
@@ -425,7 +411,7 @@ function toSummary(mailAccountId: string, folder: string, item: Record<string, u
     senderName: from?.name ?? null,
     senderAddress: from?.address ?? null,
     recipients: to,
-    receivedAt: dateString(envelope.date),
+    receivedAt: dateString(item.internalDate) ?? dateString(envelope.date),
     sentAt: dateString(envelope.date),
     unread: !flags.includes("\\Seen"),
     flagged: flags.includes("\\Flagged"),
