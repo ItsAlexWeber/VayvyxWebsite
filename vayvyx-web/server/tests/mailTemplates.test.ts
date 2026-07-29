@@ -12,6 +12,7 @@ import { canEditTemplate, canReadTemplate } from "../src/mailTemplatePermissions
 import {
   builtInTemplateVariables,
   escapeHtml,
+  htmlToPlainText,
   renderTemplateContent,
   sanitizeEmailTemplateHtml,
   unresolvedTemplateVariables,
@@ -102,6 +103,12 @@ describe("mail template sanitization and variables", () => {
     expect(
       unresolvedTemplateVariables(["{{first_name}} {{beta_link}}"], variables)
     ).toEqual(["beta_link"]);
+  });
+
+  it("derives a readable plain-text fallback from rendered template HTML", () => {
+    expect(
+      htmlToPlainText('<table><tr><td style="padding:12px">Hello</td></tr></table><p>Open <a href="https://vayvyx.com/login">Vayvyx</a></p>')
+    ).toBe("Hello\nOpen Vayvyx");
   });
 });
 

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MailComposeModal } from "./mailComposeModal.tsx";
@@ -22,7 +22,25 @@ import type {
   MailFolder,
   MailMessageDetail,
   MailMessageSummary,
+  SendMessageRequest,
 } from "../../types/mail.ts";
+
+const mockMailApi = vi.hoisted(() => ({
+  getTemplates: vi.fn(),
+  getTemplate: vi.fn(),
+  renderTemplatePreview: vi.fn(),
+  createTemplate: vi.fn(),
+  updateTemplate: vi.fn(),
+  duplicateTemplate: vi.fn(),
+  deleteTemplate: vi.fn(),
+  exportTemplate: vi.fn(),
+  uploadTemplateAsset: vi.fn(),
+  importTemplate: vi.fn(),
+}));
+
+vi.mock("../../lib/mailApi.ts", () => ({
+  mailApi: mockMailApi,
+}));
 
 const account: MailAccountSummary = {
   id: "mailbox-1",
@@ -101,9 +119,40 @@ const summary: MailMessageSummary = {
   references: [],
 };
 
+const betaTemplateSummary = {
+  id: "00000000-0000-4000-8000-000000000101",
+  name: "Beta Access Ready",
+  description: "Private beta access details",
+  subjectTemplate: "Your Vayvyx Private Beta Access Is Ready",
+  scope: "personal" as const,
+  defaultMailAccountId: "mailbox-1",
+  previewMetadata: null,
+  createdBy: "user-1",
+  updatedAt: "2026-07-28T12:00:00.000Z",
+  createdAt: "2026-07-28T12:00:00.000Z",
+  isActive: true,
+};
+
+const betaTemplateDetail = {
+  ...betaTemplateSummary,
+  htmlContent:
+    "<table><tbody><tr><td>Hello {{first_name}}</td></tr><tr><td>LOGIN EMAIL {{login_email}}</td></tr><tr><td>TEMP PASSWORD {{temporary_password}}</td></tr></tbody></table>",
+  plainTextContent: "Hello {{first_name}}\nLOGIN EMAIL {{login_email}}\nTEMP PASSWORD {{temporary_password}}",
+  variables: [
+    "access_type",
+    "first_name",
+    "login_email",
+    "login_url",
+    "password_reset_url",
+    "temporary_password",
+  ],
+  assets: [],
+};
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  vi.clearAllMocks();
   vi.restoreAllMocks();
 });
 
@@ -490,6 +539,116 @@ describe("mail frontend components", () => {
     expect(screen.getByLabelText("To")).toHaveProperty("value", "reply@example.com");
     expect(screen.getByLabelText("Cc")).toHaveProperty("value", "alex@example.com");
     expect(screen.getByText("Templates")).toBeTruthy();
+  });
+
+  it("uses one rich message body workspace for normal compose sends", async () => {
+    const onSend = vi.fn().mockResolvedValue({ status: "sent", messageId: "<sent@test>" });
+    render(
+      <MailComposeModal
+        account={{ ...account, currentUserRole: "sender" }}
+        mode="compose"
+        originalMessage={null}
+        onClose={vi.fn()}
+        onSend={onSend}
+      />
+    );
+
+    expect(document.querySelector('textarea[aria-label="Message body"]')).toBeNull();
+    const editor = screen.getByLabelText("Message body");
+    editor.innerHTML = "<p>Hello <strong>team</strong></p>";
+    fireEvent.input(editor);
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "person@example.com" } });
+    fireEvent.change(screen.getByLabelText("Subject"), { target: { value: "Hello" } });
+    fireEvent.click(screen.getByText("Send"));
+
+    await waitFor(() => expect(onSend).toHaveBeenCalled());
+    const [input] = onSend.mock.calls[0] as [SendMessageRequest, File[]];
+    expect(input.textBody).toBe("Hello team");
+    expect(input.sanitizedHtmlBody).toContain("<strong>team</strong>");
+  });
+
+  it("opens template fields with defaults and blocks blank placeholder use", async () => {
+    const onSend = vi.fn().mockResolvedValue({ status: "sent", messageId: "<sent@test>" });
+    mockMailApi.getTemplates.mockResolvedValue([betaTemplateSummary]);
+    mockMailApi.getTemplate.mockResolvedValue(betaTemplateDetail);
+    mockMailApi.renderTemplatePreview.mockImplementation(
+      async (_templateId: string, variables: Record<string, string>) => ({
+        subject: "Your Vayvyx Private Beta Access Is Ready",
+        htmlContent: `<table><tbody><tr><td>LOGIN EMAIL ${variables.login_email ?? ""}</td></tr><tr><td>TEMP PASSWORD ${variables.temporary_password ?? ""}</td></tr></tbody></table>`,
+        plainTextContent: `LOGIN EMAIL ${variables.login_email ?? ""}\nTEMP PASSWORD ${variables.temporary_password ?? ""}`,
+        unresolvedVariables: [],
+      })
+    );
+
+    render(
+      <MailComposeModal
+        account={{ ...account, currentUserRole: "sender" }}
+        mode="compose"
+        originalMessage={null}
+        onClose={vi.fn()}
+        onSend={onSend}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "Alex Beta <alex@example.com>" } });
+    fireEvent.click(screen.getByText("Templates"));
+
+    expect(await screen.findByText("Beta Access Ready")).toBeTruthy();
+    expect(screen.getByLabelText("Login email")).toHaveProperty("value", "alex@example.com");
+    expect(screen.getByLabelText("Login URL")).toHaveProperty("value", "https://vayvyx.com/login");
+    expect(screen.getByLabelText("Password-reset URL")).toHaveProperty("value", "https://vayvyx.com/reset-password");
+    expect(screen.getByText(/Complete required template fields/)).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Use template"));
+    expect(screen.getByText("Complete the missing variables before using this template.")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("First name"), { target: { value: "Alex" } });
+    fireEvent.change(screen.getByLabelText("Access type"), { target: { value: "Private beta" } });
+    fireEvent.change(screen.getByLabelText("Login email"), { target: { value: "alex@example.com" } });
+    fireEvent.change(screen.getByLabelText("Temporary password"), { target: { value: "temporary-password" } });
+    await waitFor(() => expect(screen.queryByText(/Complete required template fields/)).toBeNull());
+    fireEvent.click(screen.getByText("Use template"));
+
+    await waitFor(() => expect(screen.getByText(/Template:/)).toBeTruthy());
+    expect(screen.getByLabelText("Subject")).toHaveProperty("value", "Your Vayvyx Private Beta Access Is Ready");
+    expect(document.querySelector('textarea[aria-label="Message body"]')).toBeNull();
+    expect(screen.getByTitle("Rendered email body")).toBeTruthy();
+  });
+
+  it("saves and restores compose draft content", async () => {
+    render(
+      <MailComposeModal
+        account={{ ...account, currentUserRole: "sender" }}
+        mode="compose"
+        originalMessage={null}
+        onClose={vi.fn()}
+        onSend={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("To"), { target: { value: "draft@example.com" } });
+    fireEvent.change(screen.getByLabelText("Subject"), { target: { value: "Saved subject" } });
+    const editor = screen.getByLabelText("Message body");
+    editor.innerHTML = "<p>Saved body</p>";
+    fireEvent.input(editor);
+    fireEvent.click(screen.getByText("Save Draft"));
+
+    await waitFor(() => expect(screen.getByText("Draft saved.")).toBeTruthy());
+    cleanup();
+
+    render(
+      <MailComposeModal
+        account={{ ...account, currentUserRole: "sender" }}
+        mode="compose"
+        originalMessage={null}
+        onClose={vi.fn()}
+        onSend={vi.fn()}
+      />
+    );
+
+    expect(screen.getByLabelText("To")).toHaveProperty("value", "draft@example.com");
+    expect(screen.getByLabelText("Subject")).toHaveProperty("value", "Saved subject");
+    expect(screen.getByLabelText("Message body").textContent).toContain("Saved body");
   });
 });
 

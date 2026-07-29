@@ -23,6 +23,15 @@ describe("mail frontend layout CSS", () => {
     expect(mailCss).toContain("scrollbar-width: thin");
     expect(mailCss).toContain(".mail-html-body-frame");
     expect(mailCss).toContain(".mail-template-picker");
+    expect(mailCss).toContain("width: min(100%, 60rem)");
+    expect(mailCss).toContain("max-height: min(85svh, 54rem)");
+    expect(mailCss).toContain(".mail-compose-body-workspace");
+    expect(mailCss).toContain("overflow-y: auto");
+    expect(mailCss).toContain(".mail-rich-editor-toolbar");
+    expect(mailCss).toContain(".mail-compose-template-preview");
+    expect(mailCss).toContain("width: min(100%, 680px)");
+    expect(mailCss).toContain(".mail-template-field-warning");
+    expect(mailCss).toContain(".mail-file-input");
     expect(mailCss).toContain("min-width: 0");
     expect(mailCss).toContain("@media (max-width: 760px)");
     expect(mailCss).toContain("@media (prefers-reduced-motion: reduce)");

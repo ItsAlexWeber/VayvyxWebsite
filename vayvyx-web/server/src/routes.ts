@@ -601,7 +601,7 @@ export function createRoutes(deps: RoutesDeps) {
         : null;
       const sendInput = await deriveSendInput(deps.mailProvider, account, {
         ...input,
-        subject: renderedTemplate?.subject || input.subject,
+        subject: input.subject.trim().length > 0 ? input.subject : renderedTemplate?.subject ?? input.subject,
         textBody: renderedTemplate?.plainTextContent ?? input.textBody,
         sanitizedHtmlBody: renderedTemplate?.htmlContent ?? sanitizedHtmlBody ?? undefined,
         inlineTemplateAssets: renderedTemplate?.inlineAssets,

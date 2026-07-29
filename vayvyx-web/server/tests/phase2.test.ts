@@ -100,6 +100,7 @@ function createPhase2App(role = "viewer", overrides: Record<string, unknown> = {
         },
       },
       connectionManager: {},
+      templateService: overrides.templateService,
       mailProvider: {
         listFolders: async () => [
           {
@@ -974,6 +975,56 @@ describe("Phase 2 routes", () => {
         textBody: "Hello",
       })
       .expect(403);
+  });
+
+  it("sends selected templates as rendered HTML and preserves an edited subject", async () => {
+    let captured: {
+      subject: string;
+      textBody: string;
+      sanitizedHtmlBody?: string;
+      templateVariables?: Record<string, string>;
+    } | null = null;
+
+    await request(
+      createPhase2App("sender", {
+        templateService: {
+          renderTemplateForSend: async () => ({
+            subject: "Template subject",
+            htmlContent: '<table><tbody><tr><td style="padding:12px">Rendered HTML</td></tr></tbody></table>',
+            plainTextContent: "Rendered HTML",
+            unresolvedVariables: [],
+            inlineAssets: [],
+            defaultMailAccountId: account.id,
+          }),
+        },
+        captureSend: (input: {
+          subject: string;
+          textBody: string;
+          sanitizedHtmlBody?: string;
+          templateVariables?: Record<string, string>;
+        }) => {
+          captured = input;
+        },
+      })
+    )
+      .post(`/api/mail/accounts/${account.id}/send`)
+      .send({
+        mode: "compose",
+        templateId: "00000000-0000-4000-8000-000000000101",
+        templateVariables: { first_name: "Alex" },
+        to: ["person@example.com"],
+        cc: [],
+        bcc: [],
+        subject: "Edited subject",
+        textBody: "Visible draft text",
+        sanitizedHtmlBody: "<p>Visible draft HTML</p>",
+      })
+      .expect(200);
+
+    expect(captured?.subject).toBe("Edited subject");
+    expect(captured?.textBody).toBe("Rendered HTML");
+    expect(captured?.sanitizedHtmlBody).toContain("<table");
+    expect(captured?.sanitizedHtmlBody).toContain("Rendered HTML");
   });
 });
 

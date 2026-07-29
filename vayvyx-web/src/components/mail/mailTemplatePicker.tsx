@@ -9,12 +9,19 @@ import type {
 } from "../../types/mail.ts";
 import { buildEmailSrcDoc } from "./safeEmailHtml.ts";
 import { textToEmailHtml } from "./mailTemplateUtils.ts";
+import { MailTemplateFieldForm } from "./mailTemplateFieldForm.tsx";
+import {
+  buildTemplateVariableDraft,
+  missingTemplateVariables,
+  previewTemplateVariables,
+} from "./mailTemplateVariableUtils.ts";
 
 type Props = {
   account: MailAccountSummary;
   currentSubject: string;
   currentTextBody: string;
   currentHtmlBody: string;
+  currentTo: string;
   onUse: (
     rendered: MailTemplateRendered,
     template: MailTemplateDetail,
@@ -30,6 +37,7 @@ export function MailTemplatePicker({
   currentSubject,
   currentTextBody,
   currentHtmlBody,
+  currentTo,
   onUse,
   onClose,
 }: Props) {
@@ -60,20 +68,18 @@ export function MailTemplatePicker({
     async (templateId: string) => {
       setStatus("");
       try {
-      const detail = await (await getMailApi()).getTemplate(templateId);
-        const nextVariables = Object.fromEntries(
-          detail.variables.map((name) => [name, ""])
-        );
+        const detail = await (await getMailApi()).getTemplate(templateId);
+        const nextVariables = buildTemplateVariableDraft(detail.variables, {}, currentTo);
         setSelected(detail);
         setEditDraft(detail);
         setEditing(false);
         setVariables(nextVariables);
-        await renderPreview(detail.id, nextVariables);
+        await renderPreview(detail.id, previewTemplateVariables(detail.variables, nextVariables));
       } catch (error) {
         setStatus(error instanceof Error ? error.message : "Template could not be opened.");
       }
     },
-    [renderPreview]
+    [currentTo, renderPreview]
   );
 
   const loadTemplates = useCallback(async () => {
@@ -120,10 +126,21 @@ export function MailTemplatePicker({
       });
   }, [recentIds, search, tab, templates]);
 
+  const missingVariables = useMemo(
+    () => selected ? missingTemplateVariables(selected.variables, variables) : [],
+    [selected, variables]
+  );
+
   async function useTemplate() {
     if (!selected) return;
-    setBusy(true);
     setStatus("");
+    const missing = missingTemplateVariables(selected.variables, variables);
+    if (missing.length > 0) {
+      setStatus("Complete the missing variables before using this template.");
+      return;
+    }
+
+    setBusy(true);
     try {
       const rendered = await (await getMailApi()).renderTemplatePreview(selected.id, variables);
       if (rendered.unresolvedVariables.length > 0) {
@@ -317,9 +334,11 @@ export function MailTemplatePicker({
           {selected ? (
             <>
               <div className="mail-template-actions">
-                <button type="button" onClick={useTemplate} disabled={busy}>
-                  <Wand2 size={15} /> Use
-                </button>
+                {selected.variables.length === 0 && (
+                  <button type="button" onClick={useTemplate} disabled={busy}>
+                    <Wand2 size={15} /> Use
+                  </button>
+                )}
                 <button type="button" onClick={() => setEditing((value) => !value)}>
                   <Eye size={15} /> {editing ? "Preview" : "Edit"}
                 </button>
@@ -337,21 +356,19 @@ export function MailTemplatePicker({
               </div>
 
               {selected.variables.length > 0 && (
-                <div className="mail-template-variables">
-                  {selected.variables.map((name) => (
-                    <label key={name}>
-                      <span>{name}</span>
-                      <input
-                        value={variables[name] ?? ""}
-                        onChange={(event) => {
-                          const next = { ...variables, [name]: event.target.value };
-                          setVariables(next);
-                          void renderPreview(selected.id, next);
-                        }}
-                      />
-                    </label>
-                  ))}
-                </div>
+                <MailTemplateFieldForm
+                  variableNames={selected.variables}
+                  variables={variables}
+                  missingVariables={missingVariables}
+                  busy={busy}
+                  applyLabel="Use template"
+                  onApply={useTemplate}
+                  onChange={(name, value) => {
+                    const next = { ...variables, [name]: value };
+                    setVariables(next);
+                    void renderPreview(selected.id, previewTemplateVariables(selected.variables, next));
+                  }}
+                />
               )}
 
               {editing && editDraft ? (

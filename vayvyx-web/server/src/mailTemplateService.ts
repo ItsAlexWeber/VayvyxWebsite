@@ -15,6 +15,7 @@ import {
   detectTemplateVariables,
   renderTemplateContent,
   sanitizeEmailTemplateHtml,
+  htmlToPlainText,
   unresolvedTemplateVariables,
 } from "./mailTemplateSanitizer.js";
 import { canEditTemplate, canReadTemplate } from "./mailTemplatePermissions.js";
@@ -736,7 +737,9 @@ function renderStoredTemplate(
   return {
     subject: renderTemplateContent(detail.subjectTemplate ?? "", merged, { html: false }),
     htmlContent: renderTemplateContent(detail.htmlContent, merged, { html: true }),
-    plainTextContent: renderTemplateContent(detail.plainTextContent ?? "", merged, { html: false }),
+    plainTextContent: detail.plainTextContent
+      ? renderTemplateContent(detail.plainTextContent, merged, { html: false })
+      : htmlToPlainText(renderTemplateContent(detail.htmlContent, merged, { html: true })),
     unresolvedVariables,
   };
 }
