@@ -14,6 +14,7 @@ import {
 import { MailAdminService } from "./mailAdminService.js";
 import { MailAuthorizationService } from "./mailAuthorizationService.js";
 import { ImapSmtpMailProvider } from "./mailProvider.js";
+import { MailTemplateService } from "./mailTemplateService.js";
 import {
   AesGcmMailCredentialService,
   type MailCredentialService,
@@ -49,6 +50,7 @@ export function createApp(options: CreateAppOptions) {
     options.connectionManagerOptions
   );
   const mailProvider = new ImapSmtpMailProvider(connectionManager);
+  const templateService = new MailTemplateService(options.clients.admin, audit);
 
   app.disable("x-powered-by");
   app.disable("etag");
@@ -89,6 +91,7 @@ export function createApp(options: CreateAppOptions) {
       mailAuthorizationService,
       connectionManager,
       mailProvider,
+      templateService,
       audit,
     })
   );

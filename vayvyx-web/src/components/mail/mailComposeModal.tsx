@@ -1,6 +1,15 @@
-import { Send, X } from "lucide-react";
+import { LayoutTemplate, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { MailAccountSummary, MailMessageDetail, SendMessageRequest, SendMessageResult } from "../../types/mail.ts";
+import type {
+  MailAccountSummary,
+  MailMessageDetail,
+  MailTemplateDetail,
+  MailTemplateRendered,
+  SendMessageRequest,
+  SendMessageResult,
+} from "../../types/mail.ts";
+import { buildEmailSrcDoc } from "./safeEmailHtml.ts";
+import { MailTemplatePicker } from "./mailTemplatePicker.tsx";
 
 type Props = {
   account: MailAccountSummary;
@@ -22,6 +31,10 @@ export function MailComposeModal({
   const [bcc, setBcc] = useState("");
   const [subject, setSubject] = useState(prefillSubject(mode, originalMessage));
   const [body, setBody] = useState(prefillBody(mode, originalMessage));
+  const [htmlBody, setHtmlBody] = useState("");
+  const [templateId, setTemplateId] = useState<string | undefined>();
+  const [templateVariables, setTemplateVariables] = useState<Record<string, string>>({});
+  const [showTemplates, setShowTemplates] = useState(false);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [status, setStatus] = useState("");
   const [sending, setSending] = useState(false);
@@ -50,6 +63,9 @@ export function MailComposeModal({
           bcc: splitAddresses(bcc),
           subject,
           textBody: body,
+          sanitizedHtmlBody: htmlBody || undefined,
+          templateId,
+          templateVariables,
           originalFolder: originalMessage?.folder,
           originalUid: originalMessage?.uid,
           inReplyTo: mode === "compose" ? undefined : originalMessage?.messageId ?? undefined,
@@ -85,6 +101,15 @@ export function MailComposeModal({
           <input aria-label="Bcc" placeholder="Bcc" value={bcc} onChange={(event) => setBcc(event.target.value)} />
           <input aria-label="Subject" placeholder="Subject" value={subject} onChange={(event) => setSubject(event.target.value)} />
           <textarea aria-label="Message body" value={body} onChange={(event) => setBody(event.target.value)} />
+          {htmlBody && (
+            <iframe
+              className="mail-compose-template-preview"
+              sandbox="allow-popups allow-popups-to-escape-sandbox"
+              referrerPolicy="no-referrer"
+              title="Compose HTML preview"
+              srcDoc={buildEmailSrcDoc(htmlBody, false)}
+            />
+          )}
           <input
             aria-label="Attachments"
             type="file"
@@ -92,6 +117,10 @@ export function MailComposeModal({
             onChange={(event) => setAttachments(Array.from(event.target.files ?? []))}
           />
           <div className="mail-compose-actions">
+            <button type="button" onClick={() => setShowTemplates(true)}>
+              <LayoutTemplate size={17} />
+              Templates
+            </button>
             <button className="mail-primary-action" type="submit" disabled={sending}>
               <Send size={17} />
               {sending ? "Sending..." : "Send"}
@@ -103,9 +132,34 @@ export function MailComposeModal({
         </form>
 
         {status && <p className="mail-status" aria-live="polite">{status}</p>}
+        {showTemplates && (
+          <MailTemplatePicker
+            account={account}
+            currentSubject={subject}
+            currentTextBody={body}
+            currentHtmlBody={htmlBody}
+            onClose={() => setShowTemplates(false)}
+            onUse={(rendered, template, variables) => {
+              applyTemplate(rendered, template, variables);
+              setShowTemplates(false);
+            }}
+          />
+        )}
       </section>
     </div>
   );
+
+  function applyTemplate(
+    rendered: MailTemplateRendered,
+    template: MailTemplateDetail,
+    variables: Record<string, string>
+  ) {
+    setSubject(rendered.subject);
+    setBody(rendered.plainTextContent);
+    setHtmlBody(rendered.htmlContent);
+    setTemplateId(template.id);
+    setTemplateVariables(variables);
+  }
 }
 
 function splitAddresses(value: string) {

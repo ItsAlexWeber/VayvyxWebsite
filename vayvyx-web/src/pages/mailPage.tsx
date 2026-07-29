@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { ArrowLeft, Home } from "lucide-react";
+import { ArrowLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NavigateWithTransition } from "../app.tsx";
 import { MailAccountSwitcher } from "../components/mail/mailAccountSwitcher.tsx";
@@ -7,6 +7,7 @@ import { MailComposeModal } from "../components/mail/mailComposeModal.tsx";
 import { MailFolderSidebar } from "../components/mail/mailFolderSidebar.tsx";
 import { MailMessageList } from "../components/mail/mailMessageList.tsx";
 import { MailMessageViewer } from "../components/mail/mailMessageViewer.tsx";
+import { MailNavigationRail } from "../components/mail/mailNavigationRail.tsx";
 import { MailToolbar } from "../components/mail/mailToolbar.tsx";
 import { canUseRole } from "../components/mail/mailUtils.ts";
 import { mailApi, MailApiRequestError, setMailApiAuthRequiredHandler } from "../lib/mailApi.ts";
@@ -48,6 +49,7 @@ export function MailPage({ onNavigate }: Props) {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [unifiedFailures, setUnifiedFailures] = useState<UnifiedMailboxFailure[]>([]);
   const [panel, setPanel] = useState<Panel>("sidebar");
+  const [navigationCollapsed, setNavigationCollapsed] = useState(false);
   const listAbortRef = useRef<AbortController | null>(null);
   const detailAbortRef = useRef<AbortController | null>(null);
 
@@ -259,7 +261,16 @@ export function MailPage({ onNavigate }: Props) {
   }
 
   return (
-    <main className={`mail-page ${readerOpen ? "has-reader" : "no-reader"}`} data-reader-state={readerOpen ? "open" : "closed"}>
+    <main
+      className={`mail-page ${readerOpen ? "has-reader" : "no-reader"} ${navigationCollapsed ? "nav-collapsed" : ""}`}
+      data-reader-state={readerOpen ? "open" : "closed"}
+    >
+      <MailNavigationRail
+        canManage={canManage}
+        onHome={() => onNavigate("/")}
+        onAccount={() => onNavigate("/account")}
+        onSettings={() => onNavigate("/admin/mail/settings")}
+      />
       <aside className={`mail-shell-sidebar ${panel === "sidebar" ? "mobile-active" : ""}`}>
         <header className="mail-brand">
           <img src="/vayvyx-logo.png" alt="" />
@@ -267,22 +278,22 @@ export function MailPage({ onNavigate }: Props) {
             <strong>Vayvyx Mail</strong>
             <small>Company workspace</small>
           </div>
+          <button
+            className="mail-pane-collapse"
+            type="button"
+            onClick={() => setNavigationCollapsed((value) => !value)}
+            aria-label={navigationCollapsed ? "Expand mail navigation" : "Collapse mail navigation"}
+            title={navigationCollapsed ? "Expand mail navigation" : "Collapse mail navigation"}
+          >
+            {navigationCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+          </button>
         </header>
-        <nav className="mail-top-actions" aria-label="Mail navigation">
-          <button type="button" onClick={() => onNavigate("/")}>
-            <Home size={16} /> Home
-          </button>
-          <button type="button" onClick={() => onNavigate("/account")}>
-            <ArrowLeft size={16} /> Account
-          </button>
-        </nav>
         <MailAccountSwitcher
           accounts={accounts}
           selectedId={selectedAccountId}
           isUnified={isUnified}
           onSelectUnified={selectUnified}
           onSelectAccount={selectAccount}
-          onSettings={canManage ? () => onNavigate("/admin/mail/settings") : undefined}
           canCompose={canUseRole(selectedAccount, "sender")}
           onCompose={() => setComposeMode("compose")}
         />
@@ -309,12 +320,10 @@ export function MailPage({ onNavigate }: Props) {
           search={search}
           unreadOnly={unreadOnly}
           flaggedOnly={flaggedOnly}
-          canCompose={canUseRole(selectedAccount, "sender")}
           onSearch={setSearch}
           onUnreadOnly={setUnreadOnly}
           onFlaggedOnly={setFlaggedOnly}
           onRefresh={loadMessages}
-          onCompose={() => setComposeMode("compose")}
         />
         {unifiedFailures.length > 0 && (
           <p className="mail-warning" aria-live="polite">

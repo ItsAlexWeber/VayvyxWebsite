@@ -92,12 +92,20 @@ export type UnifiedMailboxFailure = {
 export type SendMessageRequest = {
   mode: "compose" | "reply" | "replyAll" | "forward";
   identityId?: string;
+  templateId?: string;
+  templateVariables?: Record<string, string>;
   to: string[];
   cc: string[];
   bcc: string[];
   subject: string;
   textBody: string;
   sanitizedHtmlBody?: string;
+  inlineTemplateAssets?: Array<{
+    cid: string;
+    filename: string;
+    contentType: string;
+    contentBase64: string;
+  }>;
   originalFolder?: string;
   originalUid?: number;
   inReplyTo?: string;

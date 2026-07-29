@@ -74,6 +74,10 @@ const recipientSchema = z
 export const sendJsonSchema = z.object({
   mode: z.enum(["compose", "reply", "replyAll", "forward"]).default("compose"),
   identityId: z.string().uuid().optional(),
+  templateId: z.string().uuid().optional(),
+  templateVariables: z
+    .record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,63}$/), z.string().max(2000))
+    .default({}),
   to: z.array(recipientSchema).max(50).default([]),
   cc: z.array(recipientSchema).max(50).default([]),
   bcc: z.array(recipientSchema).max(50).default([]),

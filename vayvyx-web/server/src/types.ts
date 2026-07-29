@@ -70,4 +70,12 @@ export type AuditAction =
   | "message_sent"
   | "message_moved"
   | "message_trashed"
-  | "attachment_downloaded";
+  | "attachment_downloaded"
+  | "template_created"
+  | "template_updated"
+  | "template_duplicated"
+  | "template_imported"
+  | "template_exported"
+  | "template_deleted"
+  | "template_used"
+  | "template_test_sent";

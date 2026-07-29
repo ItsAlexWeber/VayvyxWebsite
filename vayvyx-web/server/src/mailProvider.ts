@@ -375,11 +375,20 @@ export class ImapSmtpMailProvider implements MailProvider {
       html: input.sanitizedHtmlBody,
       inReplyTo: input.inReplyTo,
       references: input.references,
-      attachments: attachments.map((file) => ({
-        filename: sanitizeAttachmentFilename(file.originalname),
-        path: file.path,
-        contentType: file.mimetype,
-      })),
+      attachments: [
+        ...attachments.map((file) => ({
+          filename: sanitizeAttachmentFilename(file.originalname),
+          path: file.path,
+          contentType: file.mimetype,
+        })),
+        ...(input.inlineTemplateAssets ?? []).map((asset) => ({
+          filename: sanitizeAttachmentFilename(asset.filename),
+          content: Buffer.from(asset.contentBase64, "base64"),
+          contentType: asset.contentType,
+          cid: asset.cid,
+          contentDisposition: "inline" as const,
+        })),
+      ],
     });
 
     return {

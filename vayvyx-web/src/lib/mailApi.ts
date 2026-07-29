@@ -8,6 +8,12 @@ import type {
   MailFolder,
   MailListResponse,
   MailMessageDetail,
+  MailTemplateAssetSummary,
+  MailTemplateDetail,
+  MailTemplateExport,
+  MailTemplateRendered,
+  MailTemplateScope,
+  MailTemplateSummary,
   SendMessageRequest,
   SendMessageResult,
   UnifiedInboxResponse,
@@ -199,6 +205,147 @@ export const mailApi = {
     return requestJson<MailAccessSummary>("/api/mail/access", {
       signal,
       dedupeKey: "access",
+    });
+  },
+
+  getTemplates(
+    params: { search?: string; scope?: MailTemplateScope } = {},
+    signal?: AbortSignal
+  ) {
+    return requestJson<MailTemplateSummary[]>(
+      `/api/mail/templates${query(params)}`,
+      { signal }
+    );
+  },
+
+  getTemplate(templateId: string, signal?: AbortSignal) {
+    return requestJson<MailTemplateDetail>(`/api/mail/templates/${templateId}`, {
+      signal,
+    });
+  },
+
+  createTemplate(input: {
+    name: string;
+    description?: string | null;
+    subjectTemplate?: string | null;
+    htmlContent: string;
+    plainTextContent?: string | null;
+    scope: Exclude<MailTemplateScope, "system">;
+    defaultMailAccountId?: string | null;
+  }) {
+    return requestJson<MailTemplateDetail>("/api/mail/templates", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  updateTemplate(templateId: string, input: Partial<{
+    name: string;
+    description: string | null;
+    subjectTemplate: string | null;
+    htmlContent: string;
+    plainTextContent: string | null;
+    scope: Exclude<MailTemplateScope, "system">;
+    defaultMailAccountId: string | null;
+  }>) {
+    return requestJson<MailTemplateDetail>(`/api/mail/templates/${templateId}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+  },
+
+  duplicateTemplate(
+    templateId: string,
+    input: { name?: string; scope?: Exclude<MailTemplateScope, "system">; defaultMailAccountId?: string | null } = {}
+  ) {
+    return requestJson<MailTemplateDetail>(`/api/mail/templates/${templateId}/duplicate`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  deleteTemplate(templateId: string) {
+    return requestJson<{ ok: true }>(`/api/mail/templates/${templateId}`, {
+      method: "DELETE",
+    });
+  },
+
+  importTemplate(input: {
+    name: string;
+    description?: string | null;
+    subjectTemplate?: string | null;
+    scope: Exclude<MailTemplateScope, "system">;
+    defaultMailAccountId?: string | null;
+    htmlContent?: string;
+    plainTextContent?: string | null;
+    file?: File;
+  }) {
+    const form = new FormData();
+    form.set("name", input.name);
+    form.set("scope", input.scope);
+    if (input.description) form.set("description", input.description);
+    if (input.subjectTemplate) form.set("subjectTemplate", input.subjectTemplate);
+    if (input.defaultMailAccountId) form.set("defaultMailAccountId", input.defaultMailAccountId);
+    if (input.htmlContent) form.set("htmlContent", input.htmlContent);
+    if (input.plainTextContent) form.set("plainTextContent", input.plainTextContent);
+    if (input.file) form.set("template", input.file);
+
+    return requestJson<MailTemplateDetail>("/api/mail/templates/import", {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  exportTemplate(templateId: string) {
+    return requestJson<MailTemplateExport>(`/api/mail/templates/${templateId}/export`);
+  },
+
+  uploadTemplateAsset(templateId: string, file: File) {
+    const form = new FormData();
+    form.set("asset", file);
+    return requestJson<MailTemplateAssetSummary>(`/api/mail/templates/${templateId}/assets`, {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  removeTemplateAsset(templateId: string, assetId: string) {
+    return requestJson<{ ok: true }>(`/api/mail/templates/${templateId}/assets/${assetId}`, {
+      method: "DELETE",
+    });
+  },
+
+  renderTemplatePreview(templateId: string, variables: Record<string, string>) {
+    return requestJson<MailTemplateRendered>(`/api/mail/templates/${templateId}/render-preview`, {
+      method: "POST",
+      body: JSON.stringify({ variables }),
+    });
+  },
+
+  validateTemplateVariables(input: {
+    subjectTemplate?: string | null;
+    htmlContent: string;
+    plainTextContent?: string | null;
+    variables?: Record<string, string>;
+    allowUnresolved?: boolean;
+  }) {
+    return requestJson<{ variables: string[]; unresolvedVariables: string[] }>(
+      "/api/mail/templates/validate-variables",
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      }
+    );
+  },
+
+  sendTemplateTest(templateId: string, input: {
+    mailAccountId: string;
+    to: string;
+    variables: Record<string, string>;
+  }) {
+    return requestJson<SendMessageResult>(`/api/mail/templates/${templateId}/test-send`, {
+      method: "POST",
+      body: JSON.stringify(input),
     });
   },
 

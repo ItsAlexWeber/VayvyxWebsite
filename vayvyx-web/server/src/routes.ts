@@ -8,6 +8,7 @@ import type { MailAdminService } from "./mailAdminService.js";
 import type { MailConnectionManager } from "./mailConnectionManager.js";
 import type { MailAuthorizationService } from "./mailAuthorizationService.js";
 import type { MailProvider } from "./mailProvider.js";
+import type { MailTemplateService } from "./mailTemplateService.js";
 import { HttpError } from "./httpError.js";
 import { requireAuthContext } from "./auth.js";
 import {
@@ -32,6 +33,18 @@ import {
   uidParamSchema,
   unifiedQuerySchema,
 } from "./mailValidation.js";
+import {
+  createTemplateSchema,
+  duplicateTemplateSchema,
+  importTemplateFieldsSchema,
+  renderTemplateSchema,
+  sendTemplateTestSchema,
+  templateAssetParamSchema,
+  templateIdParamSchema,
+  templateListQuerySchema,
+  updateTemplateSchema,
+  validateTemplateVariablesSchema,
+} from "./mailTemplateValidation.js";
 import type { AuditLogger } from "./audit.js";
 import { sanitizeEmailHtml } from "./mailSanitizer.js";
 import type { MailAccountPrivate } from "./types.js";
@@ -42,6 +55,7 @@ type RoutesDeps = {
   mailAuthorizationService: MailAuthorizationService;
   connectionManager: MailConnectionManager;
   mailProvider: MailProvider;
+  templateService?: MailTemplateService;
   audit: AuditLogger;
 };
 
@@ -53,6 +67,14 @@ export function createRoutes(deps: RoutesDeps) {
       files: 20,
       fileSize: 100 * 1024 * 1024,
       fields: 40,
+    },
+  });
+  const templateUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      files: 1,
+      fileSize: 10 * 1024 * 1024,
+      fields: 20,
     },
   });
 
@@ -334,6 +356,225 @@ export function createRoutes(deps: RoutesDeps) {
     }
   });
 
+  router.get("/api/mail/templates", async (request, response, next) => {
+    try {
+      const auth = requireAuthContext(request);
+      const query = templateListQuerySchema.parse(request.query);
+      response.json(await requireTemplateService(deps).listTemplates(auth, query));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get("/api/mail/templates/:templateId", async (request, response, next) => {
+    try {
+      const auth = requireAuthContext(request);
+      const params = templateIdParamSchema.parse(request.params);
+      response.json(await requireTemplateService(deps).getTemplate(auth, params.templateId));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/api/mail/templates", async (request, response, next) => {
+    try {
+      const auth = requireAuthContext(request);
+      const input = createTemplateSchema.parse(request.body ?? {});
+      response.status(201).json(
+        await requireTemplateService(deps).createTemplate(auth, input, request.ip)
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.patch("/api/mail/templates/:templateId", async (request, response, next) => {
+    try {
+      const auth = requireAuthContext(request);
+      const params = templateIdParamSchema.parse(request.params);
+      const input = updateTemplateSchema.parse(request.body ?? {});
+      response.json(
+        await requireTemplateService(deps).updateTemplate(auth, params.templateId, input, request.ip)
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/api/mail/templates/:templateId/duplicate", async (request, response, next) => {
+    try {
+      const auth = requireAuthContext(request);
+      const params = templateIdParamSchema.parse(request.params);
+      const input = duplicateTemplateSchema.parse(request.body ?? {});
+      response.status(201).json(
+        await requireTemplateService(deps).duplicateTemplate(auth, params.templateId, input, request.ip)
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete("/api/mail/templates/:templateId", async (request, response, next) => {
+    try {
+      const auth = requireAuthContext(request);
+      const params = templateIdParamSchema.parse(request.params);
+      response.json(await requireTemplateService(deps).deactivateTemplate(auth, params.templateId, request.ip));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post(
+    "/api/mail/templates/import",
+    templateUpload.single("template"),
+    async (request, response, next) => {
+      try {
+        const auth = requireAuthContext(request);
+        const input = importTemplateFieldsSchema.parse(request.body ?? {});
+        response.status(201).json(
+          await requireTemplateService(deps).importTemplate(
+            auth,
+            input,
+            request.file,
+            request.ip
+          )
+        );
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  router.get("/api/mail/templates/:templateId/export", async (request, response, next) => {
+    try {
+      const auth = requireAuthContext(request);
+      const params = templateIdParamSchema.parse(request.params);
+      const exported = await requireTemplateService(deps).exportTemplate(auth, params.templateId, request.ip);
+      response.setHeader("Content-Type", "application/json");
+      response.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${exported.filename.replace(/"/g, "_")}"`
+      );
+      response.json(exported);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post(
+    "/api/mail/templates/:templateId/assets",
+    templateUpload.single("asset"),
+    async (request, response, next) => {
+      try {
+        const auth = requireAuthContext(request);
+        const params = templateIdParamSchema.parse(request.params);
+        if (!request.file) {
+          throw new HttpError(400, "INVALID_REQUEST", "Template asset file is required.");
+        }
+        response.status(201).json(
+          await requireTemplateService(deps).uploadAsset(auth, params.templateId, request.file, request.ip)
+        );
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  router.delete("/api/mail/templates/:templateId/assets/:assetId", async (request, response, next) => {
+    try {
+      const auth = requireAuthContext(request);
+      const params = templateAssetParamSchema.parse(request.params);
+      response.json(
+        await requireTemplateService(deps).removeAsset(auth, params.templateId, params.assetId, request.ip)
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/api/mail/templates/:templateId/render-preview", async (request, response, next) => {
+    try {
+      const auth = requireAuthContext(request);
+      const params = templateIdParamSchema.parse(request.params);
+      const input = renderTemplateSchema.parse(request.body ?? {});
+      response.json(
+        await requireTemplateService(deps).renderTemplate(auth, params.templateId, input.variables, {
+          allowUnresolved: true,
+        })
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/api/mail/templates/validate-variables", async (request, response, next) => {
+    try {
+      const input = validateTemplateVariablesSchema.parse(request.body ?? {});
+      response.json(
+        requireTemplateService(deps).validateVariables(
+          input.subjectTemplate,
+          input.htmlContent,
+          input.plainTextContent,
+          input.variables,
+          input.allowUnresolved
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/api/mail/templates/:templateId/test-send", async (request, response, next) => {
+    try {
+      const auth = requireAuthContext(request);
+      const params = templateIdParamSchema.parse(request.params);
+      const input = sendTemplateTestSchema.parse(request.body ?? {});
+      const requiredRole = input.to === auth.email?.toLowerCase() ? "sender" : "manager";
+      const { account } = await deps.mailAuthorizationService.requireMailboxRole(
+        auth,
+        input.mailAccountId,
+        requiredRole
+      );
+      const rendered = await requireTemplateService(deps).renderTemplateForSend(
+        auth,
+        params.templateId,
+        input.variables,
+        request.ip
+      );
+      const result = await deps.mailProvider
+        .sendMessage(
+          account,
+          {
+            mode: "compose",
+            to: [input.to],
+            cc: [],
+            bcc: [],
+            subject: rendered.subject || "Template test",
+            textBody: rendered.plainTextContent,
+            sanitizedHtmlBody: rendered.htmlContent,
+            inlineTemplateAssets: rendered.inlineAssets,
+            references: [],
+          },
+          []
+        )
+        .catch((error: unknown) => {
+          throw new HttpError(502, "TEST_SEND_FAILED", "Template test could not be sent.", error);
+        });
+      await deps.audit.record({
+        actorUserId: auth.userId,
+        mailAccountId: account.id,
+        action: "template_test_sent",
+        targetType: "mail_template",
+        targetIdentifier: params.templateId,
+        metadata: { messageId: result.messageId, assetCount: rendered.inlineAssets.length },
+        ipAddress: request.ip,
+      });
+      response.json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/api/mail/accounts/:mailAccountId/send", upload.array("attachments", 20), async (request, response, next) => {
     const files = (request.files ?? []) as Express.Multer.File[];
     try {
@@ -350,9 +591,20 @@ export function createRoutes(deps: RoutesDeps) {
       const sanitizedHtmlBody = input.sanitizedHtmlBody
         ? sanitizeEmailHtml(input.sanitizedHtmlBody).html
         : undefined;
+      const renderedTemplate = input.templateId
+        ? await requireTemplateService(deps).renderTemplateForSend(
+            auth,
+            input.templateId,
+            input.templateVariables,
+            request.ip
+          )
+        : null;
       const sendInput = await deriveSendInput(deps.mailProvider, account, {
         ...input,
-        sanitizedHtmlBody: sanitizedHtmlBody ?? undefined,
+        subject: renderedTemplate?.subject || input.subject,
+        textBody: renderedTemplate?.plainTextContent ?? input.textBody,
+        sanitizedHtmlBody: renderedTemplate?.htmlContent ?? sanitizedHtmlBody ?? undefined,
+        inlineTemplateAssets: renderedTemplate?.inlineAssets,
       });
       const totalAttachmentBytes = files.reduce((sum, file) => sum + file.size, 0);
       if (totalAttachmentBytes > account.max_attachment_mb * 1024 * 1024) {
@@ -584,6 +836,14 @@ export function createRoutes(deps: RoutesDeps) {
   });
 
   return router;
+}
+
+function requireTemplateService(deps: RoutesDeps) {
+  if (!deps.templateService) {
+    throw new HttpError(500, "INTERNAL_ERROR", "Mail templates are not configured.");
+  }
+
+  return deps.templateService;
 }
 
 async function deriveSendInput(

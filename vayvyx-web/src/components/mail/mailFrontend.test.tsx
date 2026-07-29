@@ -8,6 +8,8 @@ import { MailAccountSwitcher } from "./mailAccountSwitcher.tsx";
 import { MailFolderSidebar } from "./mailFolderSidebar.tsx";
 import { MailMessageList } from "./mailMessageList.tsx";
 import { MailMessageViewer } from "./mailMessageViewer.tsx";
+import { MailNavigationRail } from "./mailNavigationRail.tsx";
+import { MailToolbar } from "./mailToolbar.tsx";
 import { buildEmailSrcDoc, prepareEmailHtml } from "./safeEmailHtml.ts";
 import type {
   MailAccountSummary,
@@ -262,8 +264,8 @@ describe("mail frontend components", () => {
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ uid: 26 }));
   });
 
-  it("keeps mailbox navigation compact and settings admin-only", () => {
-    const { rerender } = render(
+  it("keeps mailbox navigation compact and compose visible only once in the pane", () => {
+    render(
       <MailAccountSwitcher
         accounts={[{ ...account, currentUserRole: "admin" }]}
         selectedId="mailbox-1"
@@ -277,20 +279,52 @@ describe("mail frontend components", () => {
 
     expect(screen.queryByText("admin")).toBeNull();
     expect(screen.queryByText("Mail settings")).toBeNull();
+    expect(screen.getAllByText("Compose")).toHaveLength(1);
+  });
 
-    rerender(
-      <MailAccountSwitcher
-        accounts={[{ ...account, currentUserRole: "admin" }]}
-        selectedId="mailbox-1"
-        isUnified={false}
-        canCompose
-        onCompose={vi.fn()}
-        onSelectUnified={vi.fn()}
-        onSelectAccount={vi.fn()}
+  it("renders rail navigation actions with authorized settings visibility", () => {
+    const { rerender } = render(
+      <MailNavigationRail
+        canManage={false}
+        onHome={vi.fn()}
+        onAccount={vi.fn()}
         onSettings={vi.fn()}
       />
     );
-    expect(screen.getByText("Mail settings")).toBeTruthy();
+
+    expect(screen.getByLabelText("Mail")).toBeTruthy();
+    expect(screen.getByLabelText("Home")).toBeTruthy();
+    expect(screen.getByLabelText("Account")).toBeTruthy();
+    expect(screen.queryByLabelText("Mail settings")).toBeNull();
+
+    rerender(
+      <MailNavigationRail
+        canManage
+        onHome={vi.fn()}
+        onAccount={vi.fn()}
+        onSettings={vi.fn()}
+      />
+    );
+    expect(screen.getByLabelText("Mail settings")).toBeTruthy();
+  });
+
+  it("renders compact toolbar filters as selected only when active", () => {
+    render(
+      <MailToolbar
+        title="Inbox"
+        search=""
+        unreadOnly
+        flaggedOnly={false}
+        onSearch={vi.fn()}
+        onUnreadOnly={vi.fn()}
+        onFlaggedOnly={vi.fn()}
+        onRefresh={vi.fn()}
+      />
+    );
+
+    expect(screen.getByTitle("Unread only").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTitle("Flagged only").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByLabelText("Message options")).toBeTruthy();
   });
 
   it("keeps folder paths internal while exposing friendly labels and counts", () => {

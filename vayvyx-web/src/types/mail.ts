@@ -14,6 +14,19 @@ export type MailApiErrorCode =
   | "MAIL_FETCH_FAILED"
   | "SEND_FAILED"
   | "PARTIAL_SUCCESS"
+  | "UNSUPPORTED_FILE_TYPE"
+  | "MALFORMED_HTML"
+  | "UNSAFE_HTML_REMOVED"
+  | "ARCHIVE_TOO_LARGE"
+  | "MALFORMED_ARCHIVE"
+  | "MISSING_PRIMARY_HTML"
+  | "UNSAFE_ARCHIVE_PATH"
+  | "UNSUPPORTED_ASSET"
+  | "ASSET_TOO_LARGE"
+  | "UNRESOLVED_VARIABLES"
+  | "UNAUTHORIZED_SCOPE"
+  | "TEMPLATE_NOT_FOUND"
+  | "TEST_SEND_FAILED"
   | "INTERNAL_ERROR";
 
 export type MailApiError = {
@@ -119,9 +132,56 @@ export type UnifiedMailboxFailure = {
   status: "unavailable";
 };
 
+export type MailTemplateScope = "personal" | "company" | "system";
+
+export type MailTemplateAssetSummary = {
+  id: string;
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  cid: string;
+  createdAt: string;
+};
+
+export type MailTemplateSummary = {
+  id: string;
+  name: string;
+  description: string | null;
+  subjectTemplate: string | null;
+  scope: MailTemplateScope;
+  defaultMailAccountId: string | null;
+  previewMetadata: Record<string, unknown> | null;
+  createdBy: string;
+  updatedAt: string;
+  createdAt: string;
+  isActive: boolean;
+};
+
+export type MailTemplateDetail = MailTemplateSummary & {
+  htmlContent: string;
+  plainTextContent: string | null;
+  variables: string[];
+  assets: MailTemplateAssetSummary[];
+};
+
+export type MailTemplateRendered = {
+  subject: string;
+  htmlContent: string;
+  plainTextContent: string;
+  unresolvedVariables: string[];
+};
+
+export type MailTemplateExport = {
+  filename: string;
+  template: MailTemplateDetail;
+  assets: Array<MailTemplateAssetSummary & { contentBase64: string }>;
+};
+
 export type SendMessageRequest = {
   mode: "compose" | "reply" | "replyAll" | "forward";
   identityId?: string;
+  templateId?: string;
+  templateVariables?: Record<string, string>;
   to: string[];
   cc: string[];
   bcc: string[];
