@@ -86,6 +86,8 @@ const assetColumns = [
   "created_at",
 ].join(",");
 
+const httpsUrlTemplateVariables = ["login_url", "password_reset_url"];
+
 export class MailTemplateService {
   constructor(
     private readonly admin: SupabaseClient,
@@ -734,6 +736,8 @@ function renderStoredTemplate(
     throw new HttpError(400, "UNRESOLVED_VARIABLES", "Template variables are missing.");
   }
 
+  validateHttpsTemplateVariables(detail, merged);
+
   return {
     subject: renderTemplateContent(detail.subjectTemplate ?? "", merged, { html: false }),
     htmlContent: renderTemplateContent(detail.htmlContent, merged, { html: true }),
@@ -742,6 +746,30 @@ function renderStoredTemplate(
       : htmlToPlainText(renderTemplateContent(detail.htmlContent, merged, { html: true })),
     unresolvedVariables,
   };
+}
+
+function validateHttpsTemplateVariables(
+  detail: MailTemplateDetail,
+  variables: Record<string, string>
+) {
+  const templateVariables = detectTemplateVariables(
+    [detail.subjectTemplate ?? "", detail.htmlContent, detail.plainTextContent ?? ""].join("\n")
+  );
+
+  for (const name of httpsUrlTemplateVariables) {
+    if (!templateVariables.includes(name)) continue;
+    const value = variables[name];
+    if (!value || value.trim().length === 0) continue;
+
+    try {
+      const parsed = new URL(value);
+      if (parsed.protocol === "https:") continue;
+    } catch {
+      // Fall through to the typed error below.
+    }
+
+    throw new HttpError(400, "INVALID_REQUEST", "Template URL variables must be HTTPS URLs.");
+  }
 }
 
 function toTemplateSummary(row: MailTemplateRow): MailTemplateSummary {

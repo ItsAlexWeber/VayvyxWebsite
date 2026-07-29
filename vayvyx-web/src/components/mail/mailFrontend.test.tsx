@@ -133,11 +133,22 @@ const betaTemplateSummary = {
   isActive: true,
 };
 
+const betaTemplateHtml = `<!doctype html><html><head><style>@media only screen and (max-width:640px){.container{width:100%}}</style></head><body><table class="container"><tbody><tr><td>Your Vayvyx access is ready.</td></tr><tr><td>Hello {{first_name}}</td></tr><tr><td>YOUR LOGIN INFORMATION {{login_email}} {{temporary_password}}</td></tr><tr><td><a href="{{login_url}}">How to access your account</a> {{login_url}}</td></tr><tr><td>GETTING STARTED</td></tr><tr><td>FORGOT OR NEED TO RESET YOUR PASSWORD? <a href="{{password_reset_url}}">{{password_reset_url}}</a></td></tr><tr><td>PRIVATE &amp; CONFIDENTIAL</td></tr><tr><td>Welcome to the beta</td></tr><tr><td>CONSTRUCTION INTELLIGENCE</td></tr></tbody></table></body></html>`;
+
+const betaTemplateText = `Your Vayvyx access is ready.
+Hello {{first_name}}
+YOUR LOGIN INFORMATION {{login_email}} {{temporary_password}}
+How to access your account {{login_url}}
+GETTING STARTED
+FORGOT OR NEED TO RESET YOUR PASSWORD? {{password_reset_url}}
+PRIVATE & CONFIDENTIAL
+Welcome to the beta
+CONSTRUCTION INTELLIGENCE`;
+
 const betaTemplateDetail = {
   ...betaTemplateSummary,
-  htmlContent:
-    "<table><tbody><tr><td>Hello {{first_name}}</td></tr><tr><td>LOGIN EMAIL {{login_email}}</td></tr><tr><td>TEMP PASSWORD {{temporary_password}}</td></tr></tbody></table>",
-  plainTextContent: "Hello {{first_name}}\nLOGIN EMAIL {{login_email}}\nTEMP PASSWORD {{temporary_password}}",
+  htmlContent: betaTemplateHtml,
+  plainTextContent: betaTemplateText,
   variables: [
     "access_type",
     "first_name",
@@ -574,8 +585,8 @@ describe("mail frontend components", () => {
     mockMailApi.renderTemplatePreview.mockImplementation(
       async (_templateId: string, variables: Record<string, string>) => ({
         subject: "Your Vayvyx Private Beta Access Is Ready",
-        htmlContent: `<table><tbody><tr><td>LOGIN EMAIL ${variables.login_email ?? ""}</td></tr><tr><td>TEMP PASSWORD ${variables.temporary_password ?? ""}</td></tr></tbody></table>`,
-        plainTextContent: `LOGIN EMAIL ${variables.login_email ?? ""}\nTEMP PASSWORD ${variables.temporary_password ?? ""}`,
+        htmlContent: populateBetaTemplate(betaTemplateHtml, variables),
+        plainTextContent: populateBetaTemplate(betaTemplateText, variables),
         unresolvedVariables: [],
       })
     );
@@ -613,6 +624,29 @@ describe("mail frontend components", () => {
     expect(screen.getByLabelText("Subject")).toHaveProperty("value", "Your Vayvyx Private Beta Access Is Ready");
     expect(document.querySelector('textarea[aria-label="Message body"]')).toBeNull();
     expect(screen.getByTitle("Rendered email body")).toBeTruthy();
+    const srcDoc = screen.getByTitle("Rendered email body").getAttribute("srcdoc") ?? "";
+    expect(srcDoc).toContain("<!doctype html>");
+    expect(srcDoc).toContain("GETTING STARTED");
+    expect(srcDoc).toContain("FORGOT OR NEED TO RESET YOUR PASSWORD?");
+    expect(srcDoc).toContain("PRIVATE &amp; CONFIDENTIAL");
+    expect(srcDoc).toContain("CONSTRUCTION INTELLIGENCE");
+    expect(srcDoc).not.toContain(betaTemplateText);
+
+    fireEvent.click(screen.getByText("Save Draft"));
+    await waitFor(() => expect(screen.getByText("Draft saved.")).toBeTruthy());
+    cleanup();
+
+    render(
+      <MailComposeModal
+        account={{ ...account, currentUserRole: "sender" }}
+        mode="compose"
+        originalMessage={null}
+        onClose={vi.fn()}
+        onSend={onSend}
+      />
+    );
+    const restoredSrcDoc = screen.getByTitle("Rendered email body").getAttribute("srcdoc") ?? "";
+    expect(restoredSrcDoc).toBe(srcDoc);
   });
 
   it("saves and restores compose draft content", async () => {
@@ -667,4 +701,8 @@ function MailRailHarness({ initialCollapsed }: { initialCollapsed: boolean }) {
       onSettings={vi.fn()}
     />
   );
+}
+
+function populateBetaTemplate(value: string, variables: Record<string, string>) {
+  return value.replace(/{{\s*([a-zA-Z][a-zA-Z0-9_]*)\s*}}/g, (_token, key: string) => variables[key] ?? "");
 }

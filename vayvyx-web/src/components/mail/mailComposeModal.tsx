@@ -38,10 +38,10 @@ import { htmlToPlainText, textToEmailHtml } from "./mailTemplateUtils.ts";
 import {
   defaultSubjectForTemplate,
   hasUnresolvedTemplateTokens,
+  invalidHttpsTemplateVariables,
   missingTemplateVariables,
   previewTemplateVariables,
 } from "./mailTemplateVariableUtils.ts";
-import { buildEmailSrcDoc } from "./safeEmailHtml.ts";
 
 type Props = {
   account: MailAccountSummary;
@@ -108,6 +108,10 @@ export function MailComposeModal({
     () => selectedTemplate ? missingTemplateVariables(selectedTemplate.variables, templateVariables) : [],
     [selectedTemplate, templateVariables]
   );
+  const templateInvalidUrlVariables = useMemo(
+    () => selectedTemplate ? invalidHttpsTemplateVariables(selectedTemplate.variables, templateVariables) : [],
+    [selectedTemplate, templateVariables]
+  );
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -142,6 +146,13 @@ export function MailComposeModal({
       if (missing.length > 0) {
         setEditingTemplateFields(true);
         setStatus("Complete the missing template fields before sending.");
+        return;
+      }
+
+      const invalidUrls = invalidHttpsTemplateVariables(selectedTemplate.variables, templateVariables);
+      if (invalidUrls.length > 0) {
+        setEditingTemplateFields(true);
+        setStatus("Login and password-reset links must be valid HTTPS URLs.");
         return;
       }
 
@@ -221,6 +232,12 @@ export function MailComposeModal({
 
     if (missing.length > 0) {
       setStatus("Complete the missing template fields before applying.");
+      return;
+    }
+
+    const invalidUrls = invalidHttpsTemplateVariables(selectedTemplate.variables, templateVariables);
+    if (invalidUrls.length > 0) {
+      setStatus("Login and password-reset links must be valid HTTPS URLs.");
       return;
     }
 
@@ -378,6 +395,7 @@ export function MailComposeModal({
                 variableNames={selectedTemplate.variables}
                 variables={templateVariables}
                 missingVariables={templateMissingVariables}
+                invalidUrlVariables={templateInvalidUrlVariables}
                 busy={templateBusy}
                 onApply={applyTemplateFields}
                 onChange={(name, value) =>
@@ -401,10 +419,7 @@ export function MailComposeModal({
                   scrolling="no"
                   title="Rendered email body"
                   style={{ height: `${templatePreviewHeight}px` }}
-                  srcDoc={buildEmailSrcDoc(
-                    htmlBody || buildMissingTemplatePreview(selectedTemplate.variables, templateVariables),
-                    false
-                  )}
+                  srcDoc={htmlBody || buildMissingTemplatePreview(selectedTemplate.variables, templateVariables)}
                   onLoad={resizeTemplatePreview}
                 />
               </div>
@@ -654,19 +669,28 @@ function buildDraft(input: {
 function buildMissingTemplatePreview(variableNames: string[], variables: Record<string, string>) {
   const previewVariables = previewTemplateVariables(variableNames, variables);
   return `
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f7fb;padding:24px">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border:1px solid #d8dee9;padding:24px">
-            <tr>
-              <td style="font-family:Arial,sans-serif;color:#1b2430;font-size:15px;line-height:1.5">
-                ${variableNames.map((name) => `<p><strong>${escapeHtmlForPreview(name)}:</strong> ${escapeHtmlForPreview(previewVariables[name] ?? "")}</p>`).join("")}
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Template fields required</title>
+      </head>
+      <body style="margin:0;background-color:#f5f7fb;padding:24px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f7fb">
+          <tr>
+            <td align="center">
+              <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border:1px solid #d8dee9;padding:24px">
+                <tr>
+                  <td style="font-family:Arial,sans-serif;color:#1b2430;font-size:15px;line-height:1.5">
+                    ${variableNames.map((name) => `<p><strong>${escapeHtmlForPreview(name)}:</strong> ${escapeHtmlForPreview(previewVariables[name] ?? "")}</p>`).join("")}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+    </html>
   `;
 }
 

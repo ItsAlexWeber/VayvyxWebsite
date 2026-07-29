@@ -64,6 +64,22 @@ export function missingTemplateVariables(
   });
 }
 
+export function invalidHttpsTemplateVariables(
+  variableNames: string[],
+  variables: Record<string, string>
+) {
+  return ["login_url", "password_reset_url"].filter((name) => {
+    if (!variableNames.includes(name)) return false;
+    const value = variables[name];
+    if (!value || value.trim().length === 0) return false;
+    try {
+      return new URL(value).protocol !== "https:";
+    } catch {
+      return true;
+    }
+  });
+}
+
 export function previewTemplateVariables(
   variableNames: string[],
   variables: Record<string, string>

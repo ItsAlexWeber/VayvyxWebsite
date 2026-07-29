@@ -7,11 +7,11 @@ import type {
   MailTemplateScope,
   MailTemplateSummary,
 } from "../../types/mail.ts";
-import { buildEmailSrcDoc } from "./safeEmailHtml.ts";
 import { textToEmailHtml } from "./mailTemplateUtils.ts";
 import { MailTemplateFieldForm } from "./mailTemplateFieldForm.tsx";
 import {
   buildTemplateVariableDraft,
+  invalidHttpsTemplateVariables,
   missingTemplateVariables,
   previewTemplateVariables,
 } from "./mailTemplateVariableUtils.ts";
@@ -130,6 +130,10 @@ export function MailTemplatePicker({
     () => selected ? missingTemplateVariables(selected.variables, variables) : [],
     [selected, variables]
   );
+  const invalidUrlVariables = useMemo(
+    () => selected ? invalidHttpsTemplateVariables(selected.variables, variables) : [],
+    [selected, variables]
+  );
 
   async function useTemplate() {
     if (!selected) return;
@@ -137,6 +141,10 @@ export function MailTemplatePicker({
     const missing = missingTemplateVariables(selected.variables, variables);
     if (missing.length > 0) {
       setStatus("Complete the missing variables before using this template.");
+      return;
+    }
+    if (invalidHttpsTemplateVariables(selected.variables, variables).length > 0) {
+      setStatus("Login and password-reset links must be valid HTTPS URLs.");
       return;
     }
 
@@ -360,6 +368,7 @@ export function MailTemplatePicker({
                   variableNames={selected.variables}
                   variables={variables}
                   missingVariables={missingVariables}
+                  invalidUrlVariables={invalidUrlVariables}
                   busy={busy}
                   applyLabel="Use template"
                   onApply={useTemplate}
@@ -386,7 +395,7 @@ export function MailTemplatePicker({
                   sandbox="allow-popups allow-popups-to-escape-sandbox"
                   referrerPolicy="no-referrer"
                   title="Template preview"
-                  srcDoc={buildEmailSrcDoc(preview?.htmlContent ?? selected.htmlContent, false)}
+                  srcDoc={preview?.htmlContent ?? selected.htmlContent}
                 />
               )}
             </>

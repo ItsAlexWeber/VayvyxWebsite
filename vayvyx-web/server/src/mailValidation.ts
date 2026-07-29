@@ -85,8 +85,8 @@ export const sendJsonSchema = z.object({
     .string()
     .max(500)
     .refine((value) => !/[\r\n]/.test(value), "Header injection is not allowed."),
-  textBody: z.string().max(200_000).default(""),
-  sanitizedHtmlBody: z.string().max(200_000).optional(),
+  textBody: z.string().max(500_000).default(""),
+  sanitizedHtmlBody: z.string().max(500_000).optional(),
   originalFolder: folderSchema.optional(),
   originalUid: z.coerce.number().int().positive().optional(),
   inReplyTo: z
