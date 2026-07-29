@@ -18,6 +18,7 @@ import {
   SupabaseVaultMailCredentialVault,
   type MailCredentialVault,
 } from "./vault.js";
+import { mailRateLimitKey } from "./rateLimitKey.js";
 
 export type CreateAppOptions = {
   clients: AppSupabaseClients;
@@ -55,7 +56,7 @@ export function createApp(options: CreateAppOptions) {
     rateLimit({
       windowMs: 60_000,
       limit: 180,
-      keyGenerator: (request) => request.auth?.userId ?? request.ip ?? "unknown",
+      keyGenerator: mailRateLimitKey,
       standardHeaders: true,
       legacyHeaders: false,
       message: {

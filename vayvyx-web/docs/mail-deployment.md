@@ -93,6 +93,8 @@ From the VM project directory:
 
 ```bash
 cd /var/www/VayvyxWebsite/vayvyx-web
+node --version
+npm --version
 git pull
 npm ci
 npm run test
@@ -302,6 +304,8 @@ Frontend tests mock Supabase sessions and API responses. They do not contact rea
 
 Do not copy environment secrets into the repository.
 
+Production requires Node.js 24 LTS or newer and npm 11 or newer. The systemd example expects Node at `/usr/local/bin/node`.
+
 ### A. Pre-Deployment Backup
 
 ```bash
@@ -315,11 +319,19 @@ sudo tar -czf /var/backups/vayvyx-web-dist.$(date +%Y%m%d%H%M%S).tgz dist dist-s
 
 ```bash
 cd /var/www/VayvyxWebsite/vayvyx-web
+node --version
+npm --version
 git pull origin main
 npm ci
 npm run lint
 npm run test
 npm run build
+```
+
+`npm run build` must produce the backend entry file at:
+
+```txt
+/var/www/VayvyxWebsite/vayvyx-web/dist-server/index.js
 ```
 
 ### C. Supabase
