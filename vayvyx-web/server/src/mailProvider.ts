@@ -84,27 +84,38 @@ export class ImapSmtpMailProvider implements MailProvider {
   async listFolders(account: MailAccountPrivate): Promise<MailFolder[]> {
     return this.deps.withImapClient(account, async (client) => {
       const mailboxClient = client as {
-        list: () => AsyncIterable<Record<string, unknown>>;
+        list: () => Promise<Record<string, unknown>[]>;
         status: (path: string, options: Record<string, boolean>) => Promise<Record<string, number>>;
       };
       const folders: MailFolder[] = [];
 
-      for await (const box of mailboxClient.list()) {
-        const path = String(box.path ?? "");
-        const status = path
-          ? await mailboxClient.status(path, { messages: true, unseen: true }).catch(() => null)
-          : null;
-        folders.push({
-          path,
-          displayName: String(box.name ?? path),
-          delimiter: String(box.delimiter ?? "/"),
-          specialUse: normalizeSpecialUse(box.specialUse),
-          originalSpecialUse: typeof box.specialUse === "string" ? box.specialUse : null,
-          totalCount: status?.messages ?? null,
-          unreadCount: status?.unseen ?? null,
-          selectable: !Array.isArray(box.flags) || !box.flags.includes("\\Noselect"),
-          subscribed: typeof box.subscribed === "boolean" ? box.subscribed : null,
-        });
+      try {
+        const mailboxes = await mailboxClient.list();
+
+        for (const box of mailboxes) {
+          const path = String(box.path ?? "");
+          const status = path
+            ? await mailboxClient.status(path, { messages: true, unseen: true }).catch(() => null)
+            : null;
+          folders.push({
+            path,
+            displayName: String(box.name ?? path),
+            delimiter: String(box.delimiter ?? "/"),
+            specialUse: normalizeSpecialUse(box.specialUse),
+            originalSpecialUse: typeof box.specialUse === "string" ? box.specialUse : null,
+            totalCount: status?.messages ?? null,
+            unreadCount: status?.unseen ?? null,
+            selectable: !Array.isArray(box.flags) || !box.flags.includes("\\Noselect"),
+            subscribed: typeof box.subscribed === "boolean" ? box.subscribed : null,
+          });
+        }
+      } catch (error) {
+        throw new HttpError(
+          502,
+          "MAILBOX_UNAVAILABLE",
+          "Mailbox folders are temporarily unavailable.",
+          error
+        );
       }
 
       return folders;

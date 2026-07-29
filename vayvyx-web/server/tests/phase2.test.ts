@@ -1,6 +1,7 @@
 import express from "express";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
+import { isHttpError } from "../src/httpError.js";
 import { sanitizeAttachmentFilename } from "../src/filename.js";
 import { normalizeSpecialUse } from "../src/mailProvider.js";
 import { ImapSmtpMailProvider } from "../src/mailProvider.js";
@@ -277,6 +278,127 @@ describe("Phase 2 safety helpers", () => {
 
     expect(sent[0]?.from).toBe('"Vayvyx Support" <support@vayvyx.com>');
   });
+
+  it("awaits ImapFlow folder arrays before mapping folders", async () => {
+    const calls: string[] = [];
+    const provider = new ImapSmtpMailProvider({
+      withImapClient: async (_account, operation) =>
+        operation({
+          list: async () => {
+            calls.push("list");
+            return [
+              {
+                path: "INBOX",
+                name: "Inbox",
+                delimiter: "/",
+                specialUse: "\\Inbox",
+                flags: [],
+                subscribed: true,
+              },
+              {
+                path: "Archive",
+                name: "Archive",
+                delimiter: "/",
+                specialUse: "\\Archive",
+                flags: [],
+                subscribed: false,
+              },
+              {
+                path: "Disabled",
+                name: "Disabled",
+                delimiter: "/",
+                flags: ["\\Noselect"],
+              },
+            ];
+          },
+          status: async (path: string) => {
+            calls.push(`status:${path}`);
+            return path === "INBOX"
+              ? { messages: 3, unseen: 2 }
+              : { messages: 0, unseen: 0 };
+          },
+        }),
+      createSmtpTransport: async () => ({}) as never,
+    });
+
+    const folders = await provider.listFolders(account);
+
+    expect(calls).toEqual([
+      "list",
+      "status:INBOX",
+      "status:Archive",
+      "status:Disabled",
+    ]);
+    expect(folders).toEqual([
+      {
+        path: "INBOX",
+        displayName: "Inbox",
+        delimiter: "/",
+        specialUse: "inbox",
+        originalSpecialUse: "\\Inbox",
+        totalCount: 3,
+        unreadCount: 2,
+        selectable: true,
+        subscribed: true,
+      },
+      {
+        path: "Archive",
+        displayName: "Archive",
+        delimiter: "/",
+        specialUse: "archive",
+        originalSpecialUse: "\\Archive",
+        totalCount: 0,
+        unreadCount: 0,
+        selectable: true,
+        subscribed: false,
+      },
+      {
+        path: "Disabled",
+        displayName: "Disabled",
+        delimiter: "/",
+        specialUse: "custom",
+        originalSpecialUse: null,
+        totalCount: 0,
+        unreadCount: 0,
+        selectable: false,
+        subscribed: null,
+      },
+    ]);
+  });
+
+  it("returns an empty folder array from an empty ImapFlow list result", async () => {
+    const provider = new ImapSmtpMailProvider({
+      withImapClient: async (_account, operation) =>
+        operation({
+          list: async () => [],
+          status: async () => {
+            throw new Error("status should not be called");
+          },
+        }),
+      createSmtpTransport: async () => ({}) as never,
+    });
+
+    await expect(provider.listFolders(account)).resolves.toEqual([]);
+  });
+
+  it("sanitizes failed folder list calls as mailbox unavailable", async () => {
+    const provider = new ImapSmtpMailProvider({
+      withImapClient: async (_account, operation) =>
+        operation({
+          list: async () => {
+            throw new Error("raw IMAP list failure");
+          },
+          status: async () => ({ messages: 0, unseen: 0 }),
+        }),
+      createSmtpTransport: async () => ({}) as never,
+    });
+
+    await expect(provider.listFolders(account)).rejects.toMatchObject({
+      status: 502,
+      code: "MAILBOX_UNAVAILABLE",
+      message: "Mailbox folders are temporarily unavailable.",
+    });
+  });
 });
 
 describe("Phase 2 routes", () => {
@@ -301,6 +423,69 @@ describe("Phase 2 routes", () => {
       .patch(`/api/mail/accounts/${account.id}/messages/1/read`)
       .send({ folder: "INBOX", read: true })
       .expect(403);
+  });
+
+  it("does not expose raw IMAP folder-list failures to the browser", async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((request, _response, next) => {
+      request.auth = auth as never;
+      next();
+    });
+    app.use(
+      createRoutes({
+        mailAdminService: {},
+        mailAuthorizationService: {
+          requireMailboxRole: async () => ({ account, role: "viewer" }),
+        },
+        connectionManager: {},
+        mailProvider: new ImapSmtpMailProvider({
+          withImapClient: async (_account, operation) =>
+            operation({
+              list: async () => {
+                throw new Error("raw IMAP list failure");
+              },
+              status: async () => ({ messages: 0, unseen: 0 }),
+            }),
+          createSmtpTransport: async () => {
+            throw new Error("SMTP should not be used for folder listing");
+          },
+        }),
+        audit: { record: async () => undefined },
+      } as never)
+    );
+    app.use(
+      (
+        error: unknown,
+        _request: express.Request,
+        response: express.Response,
+        _next: express.NextFunction
+      ) => {
+        void _next;
+        if (isHttpError(error)) {
+          response.status(error.status).json({
+            error: { code: error.code, message: error.message },
+          });
+          return;
+        }
+        response.status(500).json({
+          error: {
+            code: "INTERNAL_ERROR",
+            message: "Internal server error.",
+          },
+        });
+      }
+    );
+
+    const response = await request(app)
+      .get(`/api/mail/accounts/${account.id}/folders`)
+      .expect(502);
+
+    expect(response.body.error.code).toBe("MAILBOX_UNAVAILABLE");
+    expect(response.body.error.message).toBe(
+      "Mailbox folders are temporarily unavailable."
+    );
+    expect(JSON.stringify(response.body)).not.toContain("raw IMAP list failure");
   });
 
   it("allows senders to read and flag but denies archive", async () => {
