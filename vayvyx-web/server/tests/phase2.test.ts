@@ -412,30 +412,54 @@ describe("Phase 2 safety helpers", () => {
 
     const page = await provider.listMessages(account, defaultMessageInput());
 
-    expect(searchCalls).toEqual([{ query: { all: true }, options: { uid: true } }]);
+    expect(searchCalls).toEqual([]);
     expect(fetchAllCalls).toEqual([
       {
-        range: [101],
-        options: { uid: true },
+        range: "1:1",
+        options: undefined,
       },
     ]);
     expect(page.messages).toHaveLength(1);
     expect(page.messages[0]?.uid).toBe(101);
   });
 
-  it("fetches UID 25 even when its sequence number is 1", async () => {
+  it("fetches sequence 1 and returns stable UID 25", async () => {
     const fetchAllCalls: unknown[] = [];
     const provider = messageProvider({
       exists: 1,
       fetchAllCalls,
-      searchResult: [25],
       messages: [messageFixture({ seq: 1, uid: 25 })],
     });
 
     const page = await provider.listMessages(account, defaultMessageInput());
 
-    expect(fetchAllCalls).toEqual([{ range: [25], options: { uid: true } }]);
+    expect(fetchAllCalls).toEqual([{ range: "1:1", options: undefined }]);
     expect(page.messages.map((message) => message.uid)).toEqual([25]);
+  });
+
+  it("uses newest sequence range for a larger mailbox page", async () => {
+    const fetchAllCalls: unknown[] = [];
+    const provider = messageProvider({
+      exists: 12,
+      fetchAllCalls,
+      messages: Array.from({ length: 12 }, (_item, index) =>
+        messageFixture({ seq: index + 1, uid: index + 101 })
+      ),
+    });
+
+    const page = await provider.listMessages(account, {
+      ...defaultMessageInput(),
+      limit: 5,
+    });
+
+    expect(fetchAllCalls).toEqual([{ range: "8:12", options: undefined }]);
+    expect(page.messages.map((message) => message.uid)).toEqual([
+      112,
+      111,
+      110,
+      109,
+      108,
+    ]);
   });
 
   it("logs safe message-list diagnostics without message content", async () => {
@@ -448,11 +472,15 @@ describe("Phase 2 safety helpers", () => {
     await provider.listMessages(account, defaultMessageInput());
 
     expect(infoSpy).toHaveBeenCalledWith("Vayvyx Mail message listing", {
-      folder: "INBOX",
-      mailboxExists: 1,
-      matchingUids: 1,
-      pageUids: 1,
-      fetchResultCount: 1,
+      correlationId: expect.any(String),
+      mailAccountId: account.id,
+      folderPath: "INBOX",
+      exists: 1,
+      requestMode: "sequence-range",
+      sequenceRange: "1:1",
+      searchCount: null,
+      requestedCount: 1,
+      fetchedCount: 1,
     });
     expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("Message 101");
     expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("sender@example.com");
@@ -550,14 +578,13 @@ describe("Phase 2 safety helpers", () => {
     const page = await provider.listMessages(account, defaultMessageInput());
 
     expect(page).toEqual({ messages: [], nextCursor: null });
-    expect(searchCalls).toEqual([{ query: { all: true }, options: { uid: true } }]);
+    expect(searchCalls).toEqual([]);
     expect(fetchAllCalls).toEqual([]);
   });
 
   it("returns a typed error when message retrieval fails", async () => {
     const provider = messageProvider({
       exists: 1,
-      searchResult: [25],
       fetchError: new Error("raw fetch failure"),
       messages: [],
     });
@@ -572,7 +599,6 @@ describe("Phase 2 safety helpers", () => {
   it("throws a sanitized fetch failure when UID matches fetch no messages", async () => {
     const provider = messageProvider({
       exists: 1,
-      searchResult: [25],
       fetchedMessages: [],
       messages: [messageFixture({ seq: 1, uid: 25 })],
     });
@@ -685,14 +711,18 @@ describe("Phase 2 safety helpers", () => {
         events.push("lock");
         try {
           return await operation({
-            mailboxOpen: async () => ({ exists: 1 }),
-            search: async () => [25],
+            getMailboxLock: async () => ({
+              release: () => {
+                events.push("release");
+              },
+            }),
+            mailbox: { exists: 1 },
             fetchAll: async () => {
               throw new Error("raw fetch failure");
             },
           });
         } finally {
-          events.push("release");
+          events.push("outer finally");
         }
       },
       createSmtpTransport: async () => ({}) as never,
@@ -701,7 +731,7 @@ describe("Phase 2 safety helpers", () => {
     await expect(provider.listMessages(account, defaultMessageInput())).rejects.toMatchObject({
       code: "MAILBOX_UNAVAILABLE",
     });
-    expect(events).toEqual(["lock", "release"]);
+    expect(events).toEqual(["lock", "release", "outer finally"]);
   });
 });
 
@@ -900,9 +930,11 @@ function messageProvider(options: {
   return new ImapSmtpMailProvider({
     withImapClient: async (_account, operation) =>
       operation({
-        mailboxOpen: async (path: string) => {
+        getMailboxLock: async (path: string) => {
           expect(path).toBe("INBOX");
-          return { exists: options.exists };
+          return {
+            release: () => undefined,
+          };
         },
         mailbox: { exists: options.exists },
         search: async (
@@ -913,7 +945,7 @@ function messageProvider(options: {
           return options.searchResult ?? options.messages.map((message) => Number(message.uid));
         },
         fetchAll: async (
-          range: number[],
+          range: string | number[],
           _query: Record<string, unknown>,
           fetchOptions?: { uid?: boolean }
         ) => {
@@ -928,8 +960,16 @@ function messageProvider(options: {
 
 function selectFetchedMessages(
   messages: Array<Record<string, unknown>>,
-  range: number[]
+  range: string | number[]
 ) {
+  if (typeof range === "string") {
+    const [start, end] = range.split(":").map((value) => Number(value));
+    return messages.filter((message) => {
+      const seq = Number(message.seq);
+      return seq >= start && seq <= end;
+    });
+  }
+
   const allowed = new Set(range);
   return messages.filter((message) => allowed.has(Number(message.uid)));
 }
@@ -944,7 +984,9 @@ function messageFixture(input: {
     seq: input.seq,
     uid: input.uid,
     envelope: {
-      date: input.date ?? new Date(`2026-07-28T12:0${input.seq}:00.000Z`),
+      date:
+        input.date ??
+        new Date(Date.UTC(2026, 6, 28, 12, input.seq, 0, 0)),
       subject: `Message ${input.uid}`,
       messageId: `<${input.uid}@vayvyx.test>`,
       from: [{ name: "Sender", address: "sender@example.com" }],

@@ -1,4 +1,5 @@
 import { simpleParser, type ParsedMail } from "mailparser";
+import { randomUUID } from "node:crypto";
 import type { Transporter } from "nodemailer";
 import type { MailAccountPrivate } from "./types.js";
 import type {
@@ -126,51 +127,65 @@ export class ImapSmtpMailProvider implements MailProvider {
     return this.deps.withImapClient(account, async (client) => {
       const imap = client as {
         mailbox?: { exists?: number };
-        mailboxOpen: (path: string) => Promise<{ exists: number }>;
+        getMailboxLock: (
+          path: string,
+          options?: { readOnly?: boolean }
+        ) => Promise<{ release: () => void }>;
         search: (query: Record<string, unknown>, options?: { uid?: boolean }) => Promise<number[] | false>;
         fetchAll: (
-          range: number[],
+          range: string | number[],
           query: Record<string, unknown>,
           options?: { uid?: boolean }
         ) => Promise<Record<string, unknown>[]>;
       };
-      const mailbox = await imap.mailboxOpen(input.folder);
-      const mailboxExists =
-        Number(imap.mailbox?.exists ?? mailbox.exists) || 0;
-      let matchingUidCount = 0;
-      let pageUidCount = 0;
-      let fetchResultCount = 0;
+      const lock = await imap.getMailboxLock(input.folder, { readOnly: true });
+      const correlationId = randomUUID();
+      let exists = 0;
+      let requestMode: "sequence-range" | "filtered-search" =
+        "sequence-range";
+      let sequenceRange: string | null = null;
+      let searchCount: number | null = null;
+      let requestedCount = 0;
+      let fetchedCount = 0;
 
       try {
-        const criteria = buildSearchCriteria(input);
-        const matching = await imap.search(criteria, { uid: true });
-        const matchingUids = Array.isArray(matching) ? matching : [];
-        matchingUidCount = matchingUids.length;
-        const orderedUids = [...matchingUids].sort((a, b) =>
-          input.sortDirection === "asc" ? a - b : b - a
-        );
-        const pageUids = paginateUids(orderedUids, input);
-        pageUidCount = pageUids.length;
-        const fetchedMessages =
-          pageUids.length === 0
-            ? []
-            : await imap.fetchAll(
-                pageUids,
-                {
-                  uid: true,
-                  envelope: true,
-                  flags: true,
-                  internalDate: true,
-                  size: true,
-                  bodyStructure: true,
-                },
-                { uid: true }
-              );
-        fetchResultCount = fetchedMessages.length;
+        exists = Number(imap.mailbox?.exists) || 0;
+        const defaultRequest = isDefaultUnfilteredRequest(input);
+        let fetchedMessages: Record<string, unknown>[] = [];
+
+        if (defaultRequest) {
+          const endSequence = exists;
+          const startSequence = Math.max(1, endSequence - input.limit + 1);
+          sequenceRange = exists > 0 ? `${startSequence}:${endSequence}` : null;
+          requestedCount = sequenceRange
+            ? endSequence - startSequence + 1
+            : 0;
+          fetchedMessages =
+            sequenceRange === null
+              ? []
+              : await imap.fetchAll(sequenceRange, fetchQuery());
+        } else {
+          requestMode = "filtered-search";
+          const criteria = buildSearchCriteria(input);
+          const searchResult = await imap.search(criteria, { uid: true });
+          const matchingUids = Array.isArray(searchResult) ? searchResult : [];
+          searchCount = matchingUids.length;
+          const orderedUids = [...matchingUids].sort((a, b) =>
+            input.sortDirection === "asc" ? a - b : b - a
+          );
+          const pageUids = paginateUids(orderedUids, input);
+          requestedCount = pageUids.length;
+          fetchedMessages =
+            pageUids.length === 0
+              ? []
+              : await imap.fetchAll(pageUids, fetchQuery(), { uid: true });
+        }
+
+        fetchedCount = fetchedMessages.length;
 
         if (
-          mailboxExists > 0 &&
-          matchingUids.length > 0 &&
+          defaultRequest &&
+          exists > 0 &&
           fetchedMessages.length === 0
         ) {
           throw new HttpError(
@@ -188,11 +203,15 @@ export class ImapSmtpMailProvider implements MailProvider {
         );
 
         logMessageListDiagnostic({
-          folder: input.folder,
-          mailboxExists,
-          matchingUidCount,
-          pageUidCount,
-          fetchResultCount,
+          correlationId,
+          mailAccountId: account.id,
+          folderPath: input.folder,
+          exists,
+          requestMode,
+          sequenceRange,
+          searchCount,
+          requestedCount,
+          fetchedCount,
         });
 
         return {
@@ -204,11 +223,15 @@ export class ImapSmtpMailProvider implements MailProvider {
         };
       } catch (error) {
         logMessageListDiagnostic({
-          folder: input.folder,
-          mailboxExists,
-          matchingUidCount,
-          pageUidCount,
-          fetchResultCount,
+          correlationId,
+          mailAccountId: account.id,
+          folderPath: input.folder,
+          exists,
+          requestMode,
+          sequenceRange,
+          searchCount,
+          requestedCount,
+          fetchedCount,
         });
 
         if (isHttpError(error)) {
@@ -221,6 +244,8 @@ export class ImapSmtpMailProvider implements MailProvider {
           "Mailbox messages are temporarily unavailable.",
           error
         );
+      } finally {
+        lock.release();
       }
     });
   }
@@ -366,8 +391,22 @@ function buildSearchCriteria(input: MessageListInput) {
     query.or = [{ subject: input.search }, { body: input.search }];
   }
 
-  if (Object.keys(query).length === 0) query.all = true;
   return query;
+}
+
+function isDefaultUnfilteredRequest(input: MessageListInput) {
+  return !input.search && !input.unreadOnly && !input.flaggedOnly;
+}
+
+function fetchQuery() {
+  return {
+    uid: true,
+    envelope: true,
+    flags: true,
+    internalDate: true,
+    size: true,
+    bodyStructure: true,
+  };
 }
 
 function paginateUids(uids: number[], input: MessageListInput) {
@@ -380,18 +419,26 @@ function paginateUids(uids: number[], input: MessageListInput) {
 }
 
 function logMessageListDiagnostic(input: {
-  folder: string;
-  mailboxExists: number;
-  matchingUidCount: number;
-  pageUidCount: number;
-  fetchResultCount: number;
+  correlationId: string;
+  mailAccountId: string;
+  folderPath: string;
+  exists: number;
+  requestMode: "sequence-range" | "filtered-search";
+  sequenceRange: string | null;
+  searchCount: number | null;
+  requestedCount: number;
+  fetchedCount: number;
 }) {
   console.info("Vayvyx Mail message listing", {
-    folder: input.folder,
-    mailboxExists: input.mailboxExists,
-    matchingUids: input.matchingUidCount,
-    pageUids: input.pageUidCount,
-    fetchResultCount: input.fetchResultCount,
+    correlationId: input.correlationId,
+    mailAccountId: input.mailAccountId,
+    folderPath: input.folderPath,
+    exists: input.exists,
+    requestMode: input.requestMode,
+    ...(input.sequenceRange ? { sequenceRange: input.sequenceRange } : {}),
+    searchCount: input.searchCount,
+    requestedCount: input.requestedCount,
+    fetchedCount: input.fetchedCount,
   });
 }
 

@@ -91,6 +91,67 @@ describe("hardening gate", () => {
     warnSpy.mockRestore();
   });
 
+  it("protected mail responses are not cached or returned as 304", async () => {
+    const { app, connectionManager } = createApp({
+      clients: {
+        admin: {
+          from: (table: string) => ({
+            select: () => ({
+              eq: () => {
+                if (table === "profiles") {
+                  return {
+                    maybeSingle: async () => ({
+                      data: { role: "admin" },
+                      error: null,
+                    }),
+                  };
+                }
+
+                return Promise.resolve({ count: 0, error: null });
+              },
+            }),
+          }),
+        } as never,
+        createUserClient: () =>
+          ({
+            auth: {
+              getUser: async () => ({
+                data: {
+                  user: {
+                    id: "00000000-0000-4000-8000-000000000001",
+                    email: "person@example.com",
+                  },
+                },
+                error: null,
+              }),
+            },
+          }) as never,
+      },
+      credentialService: {} as never,
+      connectionManagerOptions: {
+        maxActiveConnections: 1,
+        idleMs: 60_000,
+        testTimeoutMs: 1_000,
+      },
+    });
+
+    const response = await request(app)
+      .get("/api/mail/access")
+      .set("Authorization", "Bearer test-token")
+      .set("If-None-Match", '"cached"')
+      .expect(200);
+
+    expect(response.headers.etag).toBeUndefined();
+    expect(response.headers["cache-control"]).toBe(
+      "private, no-store, no-cache, must-revalidate"
+    );
+    expect(response.headers.pragma).toBe("no-cache");
+    expect(response.headers.expires).toBe("0");
+    expect(response.headers.vary).toBe("Authorization");
+    expect(response.status).not.toBe(304);
+    await connectionManager.closeAll();
+  });
+
   it("uses authenticated user id for authenticated rate-limit keys", () => {
     const key = mailRateLimitKey({
       auth: { userId: "user-123" },

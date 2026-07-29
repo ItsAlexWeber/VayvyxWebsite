@@ -51,12 +51,23 @@ export function createApp(options: CreateAppOptions) {
   const mailProvider = new ImapSmtpMailProvider(connectionManager);
 
   app.disable("x-powered-by");
+  app.disable("etag");
   app.use(helmet());
   app.use(express.json({ limit: "1mb" }));
   app.get("/api/mail/health", (_request, response) => {
     response.json({ status: "ok" });
   });
   app.use(requireAuthenticated(options.clients));
+  app.use((_request, response, next) => {
+    response.setHeader(
+      "Cache-Control",
+      "private, no-store, no-cache, must-revalidate"
+    );
+    response.setHeader("Pragma", "no-cache");
+    response.setHeader("Expires", "0");
+    response.setHeader("Vary", "Authorization");
+    next();
+  });
   app.use(
     rateLimit({
       windowMs: 60_000,
