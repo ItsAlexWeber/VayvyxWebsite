@@ -9,6 +9,7 @@ lerna-debug.log*
 
 node_modules
 dist
+dist-server
 dist-ssr
 *.local
 
@@ -29,8 +30,3 @@ dist-ssr
 .env.development
 .env.production
 .env.production.local
-
-# Zipped build/export files
-*.zip
-*.7z
-*.rar

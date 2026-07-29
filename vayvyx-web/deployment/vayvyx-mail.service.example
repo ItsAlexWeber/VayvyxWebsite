@@ -1,0 +1,26 @@
+[Unit]
+Description=Vayvyx Mail backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/VayvyxWebsite/vayvyx-web
+EnvironmentFile=/etc/vayvyx-mail.env
+ExecStart=/usr/bin/node /var/www/VayvyxWebsite/vayvyx-web/dist-server/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=30
+KillSignal=SIGTERM
+User=www-data
+Group=www-data
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+vayvyx.com, www.vayvyx.com {
+    root * /var/www/VayvyxWebsite/vayvyx-web/dist
+
+    encode gzip zstd
+
+    handle /api/mail/* {
+        reverse_proxy 127.0.0.1:4174
+    }
+
+    handle /api/mail/health {
+        reverse_proxy 127.0.0.1:4174
+    }
+
+    try_files {path} /index.html
+
+    file_server
+}

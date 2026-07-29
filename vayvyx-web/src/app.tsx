@@ -6,6 +6,8 @@ import { HomePage } from "./pages/homePage.tsx";
 import { LoginPage } from "./pages/loginPage.tsx";
 import { RequestDemoPage } from "./pages/requestDemoPage.tsx";
 import { AccountPage } from "./pages/accountPage.tsx";
+import { MailPage } from "./pages/mailPage.tsx";
+import { MailAdminSettingsPage } from "./pages/mailAdminSettingsPage.tsx";
 
 export type NavigateWithTransition = (path: string) => void;
 
@@ -79,6 +81,18 @@ export default function App() {
           <Route
             path="/account"
             element={<AccountPage onNavigate={navigateWithTransition} />}
+          />
+
+          <Route
+            path="/mail"
+            element={<MailPage onNavigate={navigateWithTransition} />}
+          />
+
+          <Route
+            path="/admin/mail/settings"
+            element={
+              <MailAdminSettingsPage onNavigate={navigateWithTransition} />
+            }
           />
         </Routes>
       </div>
