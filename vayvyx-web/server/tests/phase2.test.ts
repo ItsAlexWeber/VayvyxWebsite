@@ -230,7 +230,9 @@ describe("Phase 2 safety helpers", () => {
     expect(result.html).not.toContain("script");
     expect(result.html).not.toContain("javascript:");
     expect(result.html).toContain('rel="noopener noreferrer"');
-    expect(result.html).toContain("[remote image blocked]");
+    expect(result.html).toContain('data-vayvyx-remote-image="true"');
+    expect(result.html).toContain('data-vayvyx-remote-src="https://tracker.example/p.gif"');
+    expect(result.html).not.toContain("[remote image blocked]");
   });
 
   it("sanitizes attachment filenames", () => {

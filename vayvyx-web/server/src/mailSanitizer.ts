@@ -41,6 +41,11 @@ export function sanitizeEmailHtml(input: string): SanitizedEmailHtml {
     ],
     allowedAttributes: {
       a: ["href", "target", "rel"],
+      span: [
+        "data-vayvyx-remote-image",
+        "data-vayvyx-remote-src",
+        "data-vayvyx-alt",
+      ],
       td: ["colspan", "rowspan"],
       th: ["colspan", "rowspan"],
     },
@@ -60,14 +65,26 @@ export function sanitizeEmailHtml(input: string): SanitizedEmailHtml {
         },
       }),
       img: (_tagName, attribs) => {
-        if (attribs.src?.startsWith("http://") || attribs.src?.startsWith("https://")) {
+        const remoteSrc = safeRemoteImageSrc(attribs.src);
+        if (remoteSrc) {
           hasRemoteImages = true;
+          const altText = meaningfulImageText(attribs.alt ?? attribs.title);
+
+          return {
+            tagName: "span",
+            text: altText,
+            attribs: {
+              "data-vayvyx-remote-image": "true",
+              "data-vayvyx-remote-src": remoteSrc,
+              ...(altText ? { "data-vayvyx-alt": altText } : {}),
+            },
+          };
         }
 
         return {
           tagName: "span",
-          text: "[remote image blocked]",
           attribs: {},
+          text: "",
         };
       },
     },
@@ -105,6 +122,25 @@ function safeHref(href: string | undefined) {
   }
 
   return "#";
+}
+
+function safeRemoteImageSrc(src: string | undefined) {
+  if (!src) return null;
+
+  try {
+    const parsed = new URL(src);
+    if (["http:", "https:"].includes(parsed.protocol)) {
+      return parsed.href;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function meaningfulImageText(value: string | undefined) {
+  return value?.replace(/\s+/g, " ").trim().slice(0, 240) ?? "";
 }
 
 export function stripHtmlToPreview(value: string, maxLength = 180) {

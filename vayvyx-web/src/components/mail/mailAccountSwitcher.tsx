@@ -1,4 +1,4 @@
-import { Inbox, Mail, Settings } from "lucide-react";
+import { Edit3, Inbox, Mail, Settings } from "lucide-react";
 import type { MailAccountSummary } from "../../types/mail.ts";
 
 type Props = {
@@ -8,6 +8,8 @@ type Props = {
   onSelectUnified: () => void;
   onSelectAccount: (account: MailAccountSummary) => void;
   onSettings?: () => void;
+  canCompose: boolean;
+  onCompose: () => void;
 };
 
 export function MailAccountSwitcher({
@@ -17,9 +19,18 @@ export function MailAccountSwitcher({
   onSelectUnified,
   onSelectAccount,
   onSettings,
+  canCompose,
+  onCompose,
 }: Props) {
   return (
     <section className="mail-sidebar-section" aria-label="Mailboxes">
+      {canCompose && (
+        <button className="mail-compose-nav-action" type="button" onClick={onCompose}>
+          <Edit3 size={18} />
+          <span>Compose</span>
+        </button>
+      )}
+
       <button
         className={`mail-nav-item ${isUnified ? "active" : ""}`}
         type="button"
@@ -45,7 +56,6 @@ export function MailAccountSwitcher({
               <strong>{account.displayName}</strong>
               <small>{account.emailAddress}</small>
             </span>
-            <em>{account.currentUserRole}</em>
           </button>
         ))}
       </div>

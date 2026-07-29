@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { ArrowLeft, Home, Settings } from "lucide-react";
+import { ArrowLeft, Home } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NavigateWithTransition } from "../app.tsx";
 import { MailAccountSwitcher } from "../components/mail/mailAccountSwitcher.tsx";
@@ -182,16 +182,28 @@ export function MailPage({ onNavigate }: Props) {
     }
   }
 
+  function closeMessage() {
+    detailAbortRef.current?.abort();
+    setSelectedMessage(null);
+    setDetail(null);
+    setLoadingDetail(false);
+    setPanel("list");
+  }
+
   function selectAccount(account: MailAccountSummary) {
     window.sessionStorage.setItem("vayvyx:selectedMailbox", account.id);
     setSelectedAccountId(account.id);
     setIsUnified(false);
     setSelectedFolder("INBOX");
+    setSelectedMessage(null);
+    setDetail(null);
     setPanel("list");
   }
 
   function selectUnified() {
     setIsUnified(true);
+    setSelectedMessage(null);
+    setDetail(null);
     setPanel("list");
   }
 
@@ -228,6 +240,7 @@ export function MailPage({ onNavigate }: Props) {
     ? "Unified Inbox"
     : folders.find((folder) => folder.path === selectedFolder)?.displayName ?? selectedAccount?.displayName ?? "Mailbox";
   const canManage = accounts.some((account) => account.currentUserRole === "admin");
+  const readerOpen = selectedMessage !== null;
 
   if (loadingAccounts) {
     return <main className="mail-page"><div className="mail-state">Opening Vayvyx Mail...</div></main>;
@@ -246,7 +259,7 @@ export function MailPage({ onNavigate }: Props) {
   }
 
   return (
-    <main className="mail-page">
+    <main className={`mail-page ${readerOpen ? "has-reader" : "no-reader"}`} data-reader-state={readerOpen ? "open" : "closed"}>
       <aside className={`mail-shell-sidebar ${panel === "sidebar" ? "mobile-active" : ""}`}>
         <header className="mail-brand">
           <img src="/vayvyx-logo.png" alt="" />
@@ -270,6 +283,8 @@ export function MailPage({ onNavigate }: Props) {
           onSelectUnified={selectUnified}
           onSelectAccount={selectAccount}
           onSettings={canManage ? () => onNavigate("/admin/mail/settings") : undefined}
+          canCompose={canUseRole(selectedAccount, "sender")}
+          onCompose={() => setComposeMode("compose")}
         />
         {!isUnified && (
           <MailFolderSidebar
@@ -277,6 +292,8 @@ export function MailPage({ onNavigate }: Props) {
             selectedFolder={selectedFolder}
             onSelect={(folder) => {
               setSelectedFolder(folder.path);
+              setSelectedMessage(null);
+              setDetail(null);
               setPanel("list");
             }}
           />
@@ -310,42 +327,41 @@ export function MailPage({ onNavigate }: Props) {
           selectedUid={selectedMessage?.uid ?? null}
           selectedMailAccountId={selectedMessage?.mailAccountId ?? null}
           loading={loadingMessages}
+          error={error}
           emptyText={debouncedSearch ? "No messages match this search." : "No messages to show."}
           onSelect={openMessage}
         />
       </section>
 
-      <section className={`mail-shell-viewer ${panel === "viewer" ? "mobile-active" : ""}`}>
-        <button className="mail-mobile-back" type="button" onClick={() => setPanel("list")}>
-          <ArrowLeft size={16} /> Messages
-        </button>
-        {canManage && (
-          <button className="mail-floating-settings" type="button" onClick={() => onNavigate("/admin/mail/settings")}>
-            <Settings size={16} /> Settings
+      {readerOpen && (
+        <section className={`mail-shell-viewer ${panel === "viewer" ? "mobile-active" : ""}`}>
+          <button className="mail-mobile-back" type="button" onClick={() => setPanel("list")}>
+            <ArrowLeft size={16} /> Messages
           </button>
-        )}
-        <MailMessageViewer
-          account={activeMessageAccount}
-          message={detail}
-          loading={loadingDetail}
-          downloadingId={downloadingId}
-          onDownload={downloadAttachment}
-          onReply={setComposeMode}
-          onToggleRead={() => detail && runAction(() => mailApi.setRead(detail.mailAccountId, detail.folder, detail.uid, !detail.unread))}
-          onToggleFlag={() => detail && runAction(() => mailApi.setFlagged(detail.mailAccountId, detail.folder, detail.uid, !detail.flagged))}
-          onArchive={() => detail && runAction(() => mailApi.archive(detail.mailAccountId, detail.folder, detail.uid))}
-          onTrash={() => detail && runAction(() => mailApi.trash(detail.mailAccountId, detail.folder, detail.uid))}
-          onMove={() => {
-            if (!detail) return;
-            const destination = window.prompt("Move to folder path");
-            if (destination) {
-              void runAction(() =>
-                mailApi.move(detail.mailAccountId, detail.uid, detail.folder, destination)
-              );
-            }
-          }}
-        />
-      </section>
+          <MailMessageViewer
+            account={activeMessageAccount}
+            message={detail}
+            loading={loadingDetail}
+            downloadingId={downloadingId}
+            onDownload={downloadAttachment}
+            onReply={setComposeMode}
+            onToggleRead={() => detail && runAction(() => mailApi.setRead(detail.mailAccountId, detail.folder, detail.uid, !detail.unread))}
+            onToggleFlag={() => detail && runAction(() => mailApi.setFlagged(detail.mailAccountId, detail.folder, detail.uid, !detail.flagged))}
+            onArchive={() => detail && runAction(() => mailApi.archive(detail.mailAccountId, detail.folder, detail.uid))}
+            onTrash={() => detail && runAction(() => mailApi.trash(detail.mailAccountId, detail.folder, detail.uid))}
+            onMove={() => {
+              if (!detail) return;
+              const destination = window.prompt("Move to folder path");
+              if (destination) {
+                void runAction(() =>
+                  mailApi.move(detail.mailAccountId, detail.uid, detail.folder, destination)
+                );
+              }
+            }}
+            onClose={closeMessage}
+          />
+        </section>
+      )}
 
       {composeMode && (activeMessageAccount ?? selectedAccount) && (
         <MailComposeModal

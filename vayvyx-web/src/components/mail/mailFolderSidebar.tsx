@@ -21,24 +21,34 @@ export function MailFolderSidebar({ folders, selectedFolder, onSelect }: Props) 
   return (
     <section className="mail-sidebar-section" aria-label="Folders">
       <p className="mail-section-label">Folders</p>
-      {folders.map((folder) => {
-        const Icon = iconMap[folder.specialUse];
-        return (
-          <button
-            className={`mail-nav-item compact ${selectedFolder === folder.path ? "active" : ""}`}
-            key={folder.path}
-            type="button"
-            disabled={!folder.selectable}
-            onClick={() => onSelect(folder)}
-          >
-            <Icon size={16} />
-            <span>
-              <strong>{folder.displayName}</strong>
-            </span>
-            {folder.unreadCount ? <em>{folder.unreadCount}</em> : null}
-          </button>
-        );
-      })}
+      <div className="mail-folder-list">
+        {folders.map((folder) => {
+          const Icon = iconMap[folder.specialUse];
+          const countLabel = folder.unreadCount
+            ? `${folder.unreadCount} unread`
+            : folder.totalCount !== null
+              ? `${folder.totalCount} total`
+              : undefined;
+
+          return (
+            <button
+              className={`mail-nav-item compact ${selectedFolder === folder.path ? "active" : ""}`}
+              key={folder.path}
+              type="button"
+              disabled={!folder.selectable}
+              aria-label={countLabel ? `${folder.displayName}, ${countLabel}` : folder.displayName}
+              onClick={() => onSelect(folder)}
+            >
+              <Icon size={16} />
+              <span>
+                <strong>{folder.displayName}</strong>
+              </span>
+              {folder.unreadCount ? <em>{folder.unreadCount}</em> : null}
+              {!folder.unreadCount && folder.totalCount !== null ? <em>{folder.totalCount}</em> : null}
+            </button>
+          );
+        })}
+      </div>
     </section>
   );
 }
