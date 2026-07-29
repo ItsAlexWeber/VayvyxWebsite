@@ -64,6 +64,35 @@ describe("mailApi", () => {
     });
   });
 
+  it("omits false message filter query parameters", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({ messages: [], nextCursor: null }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await mailApi.getMessages("mailbox-1", {
+      folder: "INBOX",
+      limit: 50,
+      search: "   ",
+      unreadOnly: false,
+      flaggedOnly: false,
+      sortDirection: "desc",
+    });
+
+    const [url] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const parsed = new URL(url, "https://vayvyx.test");
+    expect(parsed.pathname).toBe("/api/mail/accounts/mailbox-1/messages");
+    expect(parsed.searchParams.get("folder")).toBe("INBOX");
+    expect(parsed.searchParams.get("limit")).toBe("50");
+    expect(parsed.searchParams.get("sortDirection")).toBe("desc");
+    expect(parsed.searchParams.has("search")).toBe(false);
+    expect(parsed.searchParams.has("unreadOnly")).toBe(false);
+    expect(parsed.searchParams.has("flaggedOnly")).toBe(false);
+  });
+
   it("downloads attachments through Blob URLs and revokes them", async () => {
     const revoke = vi.fn();
     vi.stubGlobal("URL", {

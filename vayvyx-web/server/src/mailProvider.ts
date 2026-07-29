@@ -147,10 +147,17 @@ export class ImapSmtpMailProvider implements MailProvider {
       let searchCount: number | null = null;
       let requestedCount = 0;
       let fetchedCount = 0;
+      const normalizedSearch = input.search?.trim() ?? "";
+      const parsedUnreadOnly = input.unreadOnly === true;
+      const parsedFlaggedOnly = input.flaggedOnly === true;
 
       try {
         exists = Number(imap.mailbox?.exists) || 0;
-        const defaultRequest = isDefaultUnfilteredRequest(input);
+        const hasActiveFilters =
+          normalizedSearch.length > 0 ||
+          parsedUnreadOnly === true ||
+          parsedFlaggedOnly === true;
+        const defaultRequest = !hasActiveFilters;
         let fetchedMessages: Record<string, unknown>[] = [];
 
         if (defaultRequest) {
@@ -166,7 +173,11 @@ export class ImapSmtpMailProvider implements MailProvider {
               : await imap.fetchAll(sequenceRange, fetchQuery());
         } else {
           requestMode = "filtered-search";
-          const criteria = buildSearchCriteria(input);
+          const criteria = buildSearchCriteria({
+            normalizedSearch,
+            unreadOnly: parsedUnreadOnly,
+            flaggedOnly: parsedFlaggedOnly,
+          });
           const searchResult = await imap.search(criteria, { uid: true });
           const matchingUids = Array.isArray(searchResult) ? searchResult : [];
           searchCount = matchingUids.length;
@@ -212,6 +223,9 @@ export class ImapSmtpMailProvider implements MailProvider {
           searchCount,
           requestedCount,
           fetchedCount,
+          parsedUnreadOnly,
+          parsedFlaggedOnly,
+          normalizedSearchLength: normalizedSearch.length,
         });
 
         return {
@@ -232,6 +246,9 @@ export class ImapSmtpMailProvider implements MailProvider {
           searchCount,
           requestedCount,
           fetchedCount,
+          parsedUnreadOnly,
+          parsedFlaggedOnly,
+          normalizedSearchLength: normalizedSearch.length,
         });
 
         if (isHttpError(error)) {
@@ -383,19 +400,22 @@ export function normalizeSpecialUse(value: unknown): MailFolder["specialUse"] {
   return "custom";
 }
 
-function buildSearchCriteria(input: MessageListInput) {
+function buildSearchCriteria(input: {
+  normalizedSearch: string;
+  unreadOnly: boolean;
+  flaggedOnly: boolean;
+}) {
   const query: Record<string, unknown> = {};
   if (input.unreadOnly) query.seen = false;
   if (input.flaggedOnly) query.flagged = true;
-  if (input.search) {
-    query.or = [{ subject: input.search }, { body: input.search }];
+  if (input.normalizedSearch.length > 0) {
+    query.or = [
+      { subject: input.normalizedSearch },
+      { body: input.normalizedSearch },
+    ];
   }
 
   return query;
-}
-
-function isDefaultUnfilteredRequest(input: MessageListInput) {
-  return !input.search && !input.unreadOnly && !input.flaggedOnly;
 }
 
 function fetchQuery() {
@@ -428,6 +448,9 @@ function logMessageListDiagnostic(input: {
   searchCount: number | null;
   requestedCount: number;
   fetchedCount: number;
+  parsedUnreadOnly: boolean;
+  parsedFlaggedOnly: boolean;
+  normalizedSearchLength: number;
 }) {
   console.info("Vayvyx Mail message listing", {
     correlationId: input.correlationId,
@@ -439,6 +462,9 @@ function logMessageListDiagnostic(input: {
     searchCount: input.searchCount,
     requestedCount: input.requestedCount,
     fetchedCount: input.fetchedCount,
+    parsedUnreadOnly: input.parsedUnreadOnly,
+    parsedFlaggedOnly: input.parsedFlaggedOnly,
+    normalizedSearchLength: input.normalizedSearchLength,
   });
 }
 

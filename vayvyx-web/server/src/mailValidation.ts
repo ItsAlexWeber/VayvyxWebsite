@@ -11,13 +11,29 @@ export const attachmentParamSchema = uidParamSchema.extend({
 
 const folderSchema = z.string().trim().min(1).max(500);
 
+export const optionalQueryBoolean = z.preprocess((value) => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === true || value === "true") {
+    return true;
+  }
+
+  if (value === false || value === "false") {
+    return false;
+  }
+
+  return value;
+}, z.boolean().optional());
+
 export const messageListQuerySchema = z.object({
   folder: folderSchema.default("INBOX"),
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.coerce.number().int().positive().optional(),
   search: z.string().trim().max(200).optional(),
-  unreadOnly: z.coerce.boolean().default(false),
-  flaggedOnly: z.coerce.boolean().default(false),
+  unreadOnly: optionalQueryBoolean.default(false),
+  flaggedOnly: optionalQueryBoolean.default(false),
   sortDirection: z.enum(["asc", "desc"]).default("desc"),
 });
 
@@ -44,8 +60,8 @@ export const unifiedQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   cursor: z.string().trim().max(1000).optional(),
   search: z.string().trim().max(200).optional(),
-  unreadOnly: z.coerce.boolean().default(false),
-  flaggedOnly: z.coerce.boolean().default(false),
+  unreadOnly: optionalQueryBoolean.default(false),
+  flaggedOnly: optionalQueryBoolean.default(false),
 });
 
 const recipientSchema = z

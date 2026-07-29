@@ -1,6 +1,7 @@
 import express from "express";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
+import { ZodError } from "zod";
 import { isHttpError } from "../src/httpError.js";
 import { sanitizeAttachmentFilename } from "../src/filename.js";
 import { normalizeSpecialUse } from "../src/mailProvider.js";
@@ -481,6 +482,9 @@ describe("Phase 2 safety helpers", () => {
       searchCount: null,
       requestedCount: 1,
       fetchedCount: 1,
+      parsedUnreadOnly: false,
+      parsedFlaggedOnly: false,
+      normalizedSearchLength: 0,
     });
     expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("Message 101");
     expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("sender@example.com");
@@ -563,6 +567,32 @@ describe("Phase 2 safety helpers", () => {
     expect(fetchAllCalls).toEqual([{ range: [201], options: { uid: true } }]);
     expect(page.messages[0]?.uid).toBe(201);
     expect(page.messages[0]?.flagged).toBe(true);
+  });
+
+  it("uses filtered search for non-empty search text", async () => {
+    const searchCalls: unknown[] = [];
+    const fetchAllCalls: unknown[] = [];
+    const provider = messageProvider({
+      exists: 5,
+      searchCalls,
+      fetchAllCalls,
+      searchResult: [301],
+      messages: [messageFixture({ seq: 3, uid: 301 })],
+    });
+
+    const page = await provider.listMessages(account, {
+      ...defaultMessageInput(),
+      search: " invoice ",
+    });
+
+    expect(searchCalls).toEqual([
+      {
+        query: { or: [{ subject: "invoice" }, { body: "invoice" }] },
+        options: { uid: true },
+      },
+    ]);
+    expect(fetchAllCalls).toEqual([{ range: [301], options: { uid: true } }]);
+    expect(page.messages[0]?.uid).toBe(301);
   });
 
   it("returns an empty page for an empty folder", async () => {
@@ -759,6 +789,43 @@ describe("Phase 2 routes", () => {
       .expect(403);
   });
 
+  it("lists messages when explicit false filter query strings are supplied", async () => {
+    const searchCalls: unknown[] = [];
+    const fetchAllCalls: unknown[] = [];
+    const app = createMessageListRouteApp(
+      messageProvider({
+        exists: 1,
+        searchCalls,
+        fetchAllCalls,
+        messages: [messageFixture({ seq: 1, uid: 25 })],
+      })
+    );
+
+    const response = await request(app)
+      .get(
+        `/api/mail/accounts/${account.id}/messages?folder=INBOX&limit=50&unreadOnly=false&flaggedOnly=false&sortDirection=desc`
+      )
+      .expect(200);
+
+    expect(response.body.messages.map((message: { uid: number }) => message.uid)).toEqual([25]);
+    expect(searchCalls).toEqual([]);
+    expect(fetchAllCalls).toEqual([{ range: "1:1", options: undefined }]);
+  });
+
+  it("returns HTTP 400 for invalid boolean query strings", async () => {
+    const app = createMessageListRouteApp({
+      listMessages: async () => {
+        throw new Error("provider should not be called");
+      },
+    });
+
+    const response = await request(app)
+      .get(`/api/mail/accounts/${account.id}/messages?folder=INBOX&unreadOnly=yes`)
+      .expect(400);
+
+    expect(response.body.error.code).toBe("INVALID_REQUEST");
+  });
+
   it("does not expose raw IMAP folder-list failures to the browser", async () => {
     const app = express();
     app.use(express.json());
@@ -907,6 +974,48 @@ describe("Phase 2 routes", () => {
       .expect(403);
   });
 });
+
+function createMessageListRouteApp(mailProvider: unknown) {
+  const app = express();
+  app.use(express.json());
+  app.use((request, _response, next) => {
+    request.auth = auth as never;
+    next();
+  });
+  app.use(
+    createRoutes({
+      mailAdminService: {},
+      mailAuthorizationService: {
+        requireMailboxRole: async () => ({ account, role: "viewer" }),
+      },
+      connectionManager: {},
+      mailProvider,
+      audit: { record: async () => undefined },
+    } as never)
+  );
+  app.use(
+    (
+      error: unknown,
+      _request: express.Request,
+      response: express.Response,
+      _next: express.NextFunction
+    ) => {
+      void _next;
+      if (error instanceof ZodError) {
+        response.status(400).json({ error: { code: "INVALID_REQUEST" } });
+        return;
+      }
+      if (isHttpError(error)) {
+        response.status(error.status).json({
+          error: { code: error.code, message: error.message },
+        });
+        return;
+      }
+      response.status(500).json({ error: { code: "INTERNAL_ERROR" } });
+    }
+  );
+  return app;
+}
 
 function defaultMessageInput() {
   return {

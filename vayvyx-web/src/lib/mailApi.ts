@@ -123,6 +123,70 @@ function query(params: Record<string, string | number | boolean | undefined>) {
   return value ? `?${value}` : "";
 }
 
+function messageQuery(params: {
+  folder: string;
+  limit?: number;
+  cursor?: number;
+  search?: string;
+  unreadOnly?: boolean;
+  flaggedOnly?: boolean;
+  sortDirection?: "asc" | "desc";
+}) {
+  const search = new URLSearchParams();
+  search.set("folder", params.folder);
+  search.set("limit", String(params.limit ?? 50));
+  search.set("sortDirection", params.sortDirection ?? "desc");
+
+  if (params.cursor !== undefined) {
+    search.set("cursor", String(params.cursor));
+  }
+
+  const normalizedSearch = params.search?.trim() ?? "";
+  if (normalizedSearch) {
+    search.set("search", normalizedSearch);
+  }
+
+  if (params.unreadOnly) {
+    search.set("unreadOnly", "true");
+  }
+
+  if (params.flaggedOnly) {
+    search.set("flaggedOnly", "true");
+  }
+
+  return `?${search.toString()}`;
+}
+
+function unifiedMessageQuery(params: {
+  limit?: number;
+  cursor?: string;
+  search?: string;
+  unreadOnly?: boolean;
+  flaggedOnly?: boolean;
+}) {
+  const search = new URLSearchParams();
+  search.set("limit", String(params.limit ?? 50));
+
+  if (params.cursor) {
+    search.set("cursor", params.cursor);
+  }
+
+  const normalizedSearch = params.search?.trim() ?? "";
+  if (normalizedSearch) {
+    search.set("search", normalizedSearch);
+  }
+
+  if (params.unreadOnly) {
+    search.set("unreadOnly", "true");
+  }
+
+  if (params.flaggedOnly) {
+    search.set("flaggedOnly", "true");
+  }
+
+  return `?${search.toString()}`;
+}
+
 export const mailApi = {
   getAccounts(signal?: AbortSignal) {
     return requestJson<MailAccountSummary[]>("/api/mail/accounts", {
@@ -149,7 +213,7 @@ export const mailApi = {
     signal?: AbortSignal
   ) {
     return requestJson<UnifiedInboxResponse>(
-      `/api/mail/unified/messages${query(params)}`,
+      `/api/mail/unified/messages${unifiedMessageQuery(params)}`,
       { signal }
     );
   },
@@ -175,7 +239,7 @@ export const mailApi = {
     signal?: AbortSignal
   ) {
     return requestJson<MailListResponse>(
-      `/api/mail/accounts/${mailAccountId}/messages${query(params)}`,
+      `/api/mail/accounts/${mailAccountId}/messages${messageQuery(params)}`,
       { signal }
     );
   },
