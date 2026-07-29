@@ -13,6 +13,7 @@ const auth = {
 
 function createTestApp() {
   const closedMailboxes: string[] = [];
+  const createInputs: Array<Record<string, unknown>> = [];
   const app = express();
   app.use(express.json());
   app.use((request, _response, next) => {
@@ -22,26 +23,29 @@ function createTestApp() {
   app.use(
     createRoutes({
       mailAdminService: {
-        createAccount: async () => ({
-          id: "00000000-0000-4000-8000-000000000010",
-          email_address: "support@vayvyx.com",
-          display_name: "Support",
-          description: null,
-          imap_host: "sunfire.mxrouting.net",
-          imap_port: 993,
-          imap_secure: true,
-          smtp_host: "sunfire.mxrouting.net",
-          smtp_port: 465,
-          smtp_secure: true,
-          username: "support@vayvyx.com",
-          from_name: null,
-          reply_to_address: null,
-          max_attachment_mb: 25,
-          is_active: true,
-          created_by: auth.userId,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }),
+        createAccount: async (_auth: unknown, input: Record<string, unknown>) => {
+          createInputs.push(input);
+          return {
+            id: "00000000-0000-4000-8000-000000000010",
+            email_address: "support@vayvyx.com",
+            display_name: "Support",
+            description: null,
+            imap_host: "sunfire.mxrouting.net",
+            imap_port: 993,
+            imap_secure: true,
+            smtp_host: "sunfire.mxrouting.net",
+            smtp_port: 465,
+            smtp_secure: true,
+            username: "support@vayvyx.com",
+            from_name: null,
+            reply_to_address: null,
+            max_attachment_mb: 25,
+            is_active: true,
+            created_by: auth.userId,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+        },
         rotateCredentials: async () => ({ ok: true }),
       },
       connectionManager: {
@@ -67,7 +71,7 @@ function createTestApp() {
       response.status(500).json({ error: { code: "INTERNAL_ERROR" } });
     }
   );
-  return { app, closedMailboxes };
+  return { app, closedMailboxes, createInputs };
 }
 
 describe("mail admin routes", () => {
@@ -104,6 +108,33 @@ describe("mail admin routes", () => {
     await request(app)
       .get("/api/mail/admin/users/search?q=a")
       .expect(400);
+  });
+
+  it("creates a mailbox when optional description and reply-to fields are blank", async () => {
+    const { app, createInputs } = createTestApp();
+
+    await request(app)
+      .post("/api/mail/admin/accounts")
+      .send({
+        emailAddress: "support@vayvyx.com",
+        displayName: "Support",
+        description: "   ",
+        username: "support@vayvyx.com",
+        password: "mailbox password",
+        imapHost: "sunfire.mxrouting.net",
+        imapPort: 993,
+        imapSecure: true,
+        smtpHost: "sunfire.mxrouting.net",
+        smtpPort: 465,
+        smtpSecure: true,
+        replyToAddress: "",
+        maxAttachmentMb: 25,
+        initialMembers: [],
+      })
+      .expect(201);
+
+    expect(createInputs[0]?.description).toBeNull();
+    expect(createInputs[0]?.replyToAddress).toBeNull();
   });
 
   it("invalidates cached mailbox connections after credential rotation", async () => {

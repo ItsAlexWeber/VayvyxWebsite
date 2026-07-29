@@ -79,11 +79,23 @@ export function MailAdminSettingsPage({ onNavigate }: Props) {
     setBusy(true);
     setError("");
     try {
+      const trimmedDescription = form.description.trim();
+      const trimmedReplyToAddress = form.replyToAddress.trim();
+      const trimmedUsername = form.username.trim();
       const created = await mailApi.createAdminAccount({
         ...form,
-        description: form.description || null,
-        fromName: form.fromName || null,
-        replyToAddress: form.replyToAddress || null,
+        emailAddress: form.emailAddress.trim().toLowerCase(),
+        displayName: form.displayName.trim(),
+        description: trimmedDescription || null,
+        username: isEmailLike(trimmedUsername)
+          ? trimmedUsername.toLowerCase()
+          : trimmedUsername,
+        imapHost: form.imapHost.trim(),
+        smtpHost: form.smtpHost.trim(),
+        fromName: form.fromName.trim() || null,
+        replyToAddress: trimmedReplyToAddress
+          ? trimmedReplyToAddress.toLowerCase()
+          : null,
       });
       setAccounts((items) => [...items, created]);
       setSelectedId(created.id);
@@ -206,6 +218,7 @@ export function MailAdminSettingsPage({ onNavigate }: Props) {
             <div className="mail-admin-form-grid">
               <input placeholder="Email address" value={form.emailAddress} onChange={(event) => setForm({ ...form, emailAddress: event.target.value })} />
               <input placeholder="Display name" value={form.displayName} onChange={(event) => setForm({ ...form, displayName: event.target.value })} />
+              <input placeholder="Shared mailbox purpose or internal description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
               <input placeholder="Username" value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} />
               <input type="password" placeholder="Mailbox password or app password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
               <input placeholder="IMAP host" value={form.imapHost} onChange={(event) => setForm({ ...form, imapHost: event.target.value })} />
@@ -260,4 +273,8 @@ export function MailAdminSettingsPage({ onNavigate }: Props) {
       )}
     </main>
   );
+}
+
+function isEmailLike(value: string) {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
 }

@@ -2,11 +2,23 @@ import { z } from "zod";
 import { mailboxAccessRoles } from "./types.js";
 
 const nullableTrimmed = z
-  .string()
-  .trim()
-  .max(500)
-  .optional()
-  .transform((value) => (value ? value : null));
+  .preprocess(
+    (value) =>
+      typeof value === "string" ? value.trim() || null : value,
+    z.string().max(500).nullable().optional()
+  )
+  .transform((value) => value ?? null);
+
+const nullableLowerEmail = z
+  .preprocess(
+    (value) => {
+      if (typeof value !== "string") return value;
+      const trimmed = value.trim();
+      return trimmed ? trimmed.toLowerCase() : null;
+    },
+    z.string().email().max(320).nullable().optional()
+  )
+  .transform((value) => value ?? null);
 
 export const uuidParamSchema = z.object({
   mailAccountId: z.string().uuid(),
@@ -28,14 +40,7 @@ export const mailAccountBaseSchema = z.object({
   smtpPort: z.number().int().min(1).max(65535),
   smtpSecure: z.boolean(),
   fromName: nullableTrimmed,
-  replyToAddress: z
-    .string()
-    .trim()
-    .email()
-    .max(320)
-    .optional()
-    .or(z.literal(""))
-    .transform((value) => (value ? value : null)),
+  replyToAddress: nullableLowerEmail,
   maxAttachmentMb: z.number().int().min(1).max(100).default(25),
   isActive: z.boolean().optional(),
 });
