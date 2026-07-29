@@ -8,28 +8,35 @@ const migration = readFileSync(
 );
 
 describe("mail migration hardening", () => {
-  it("keeps Vault RPC wrappers security-definer with fixed search paths", () => {
-    expect(migration).toContain("security definer");
-    expect(migration).toContain("set search_path = public, vault");
+  it("stores mailbox credentials only as encrypted fields", () => {
+    expect(migration).toContain("credential_ciphertext text not null");
+    expect(migration).toContain("credential_iv text not null");
+    expect(migration).toContain("credential_auth_tag text not null");
+    expect(migration).toContain("credential_key_version integer not null default 1");
+    expect(migration).not.toContain("credential_secret_id");
   });
 
-  it("does not grant Vault wrapper execution to browser roles", () => {
-    expect(migration).toContain(
-      "revoke all on function public.mail_vault_read_secret(uuid) from public"
-    );
-    expect(migration).toContain(
-      "grant execute on function public.mail_vault_read_secret(uuid) to service_role"
-    );
-    expect(migration).not.toMatch(
-      /grant execute on function public\.mail_vault_read_secret\(uuid\) to authenticated/i
-    );
-    expect(migration).not.toMatch(
-      /grant execute on function public\.mail_vault_read_secret\(uuid\) to anon/i
-    );
+  it("does not grant encrypted credential columns to browser roles", () => {
+    const grantSelect =
+      migration.match(
+        /grant select \(([\s\S]*?)\) on public\.mail_accounts\s+to authenticated;/i
+      )?.[1] ?? "";
+
+    expect(grantSelect).not.toContain("credential_ciphertext");
+    expect(grantSelect).not.toContain("credential_iv");
+    expect(grantSelect).not.toContain("credential_auth_tag");
+    expect(grantSelect).not.toContain("credential_key_version");
   });
 
-  it("limits Vault reads and rotations to mail account credential ids", () => {
-    expect(migration).toContain("from public.mail_accounts");
-    expect(migration).toContain("where credential_secret_id = p_secret_id::text");
+  it("removes hosted-project-blocked secret extension and wrappers", () => {
+    const blockedTerms = [
+      ["supabase", "vault"].join("_"),
+      ["schema", "vault"].join(" "),
+      ["mail", "vault", ""].join("_"),
+    ];
+
+    for (const term of blockedTerms) {
+      expect(migration.toLowerCase()).not.toContain(term);
+    }
   });
 });

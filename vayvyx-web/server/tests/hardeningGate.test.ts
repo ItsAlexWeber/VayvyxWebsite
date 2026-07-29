@@ -11,6 +11,7 @@ describe("hardening gate", () => {
       SUPABASE_URL: "https://example.supabase.co",
       SUPABASE_PUBLISHABLE_KEY: "public-key",
       SUPABASE_SECRET_KEY: "server-key",
+      MAIL_CREDENTIAL_MASTER_KEY: Buffer.alloc(32, 1).toString("base64"),
     });
 
     expect(config.port).toBe(4174);
@@ -23,7 +24,7 @@ describe("hardening gate", () => {
         admin: {} as never,
         createUserClient: () => ({}) as never,
       },
-      vault: {} as never,
+      credentialService: {} as never,
       connectionManagerOptions: {
         maxActiveConnections: 1,
         idleMs: 60_000,
@@ -68,7 +69,7 @@ describe("hardening gate", () => {
             },
           }) as never,
       },
-      vault: {} as never,
+      credentialService: {} as never,
       connectionManagerOptions: {
         maxActiveConnections: 1,
         idleMs: 60_000,

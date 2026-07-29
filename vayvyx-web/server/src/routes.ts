@@ -443,14 +443,14 @@ export function createRoutes(deps: RoutesDeps) {
         const auth = requireAuthContext(request);
         const params = uuidParamSchema.parse(request.params);
         const input = rotateCredentialsSchema.parse(request.body);
-        response.json(
-          await deps.mailAdminService.rotateCredentials(
-            auth,
-            params.mailAccountId,
-            input.password,
-            request.ip
-          )
+        const result = await deps.mailAdminService.rotateCredentials(
+          auth,
+          params.mailAccountId,
+          input.password,
+          request.ip
         );
+        await deps.connectionManager.closeMailbox(params.mailAccountId);
+        response.json(result);
       } catch (error) {
         next(error);
       }

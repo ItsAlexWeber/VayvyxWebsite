@@ -3,7 +3,7 @@ import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 import pLimit from "p-limit";
 import type { MailAccountPrivate } from "./types.js";
-import type { MailCredentialVault } from "./vault.js";
+import type { MailCredentialService } from "./credentialCrypto.js";
 
 type ManagedConnection = {
   client: ImapFlow;
@@ -23,7 +23,7 @@ export class MailConnectionManager {
   private idleTimer: NodeJS.Timeout | null = null;
 
   constructor(
-    private readonly vault: MailCredentialVault,
+    private readonly credentialService: MailCredentialService,
     private readonly options: MailConnectionManagerOptions
   ) {
     this.limit = pLimit(options.maxActiveConnections);
@@ -35,8 +35,9 @@ export class MailConnectionManager {
 
   async testImap(account: MailAccountPrivate) {
     return this.limit(async () => {
-      const password = await this.vault.readMailboxSecret(
-        account.credential_secret_id
+      const password = this.credentialService.decryptMailboxCredential(
+        account.id,
+        account
       );
       const client = new ImapFlow({
         host: account.imap_host,
@@ -96,18 +97,23 @@ export class MailConnectionManager {
   async createSmtpTransport(
     account: MailAccountPrivate
   ): Promise<Transporter> {
-    const password = await this.vault.readMailboxSecret(
-      account.credential_secret_id
+    const password = this.credentialService.decryptMailboxCredential(
+      account.id,
+      account
     );
-    return nodemailer.createTransport({
-      host: account.smtp_host,
-      port: account.smtp_port,
-      secure: account.smtp_secure,
-      auth: {
-        user: account.username,
-        pass: password,
-      },
-    });
+    try {
+      return nodemailer.createTransport({
+        host: account.smtp_host,
+        port: account.smtp_port,
+        secure: account.smtp_secure,
+        auth: {
+          user: account.username,
+          pass: password,
+        },
+      });
+    } finally {
+      void password;
+    }
   }
 
   async closeMailbox(mailAccountId: string) {
@@ -149,8 +155,9 @@ export class MailConnectionManager {
       return existing.client;
     }
 
-    const password = await this.vault.readMailboxSecret(
-      account.credential_secret_id
+    const password = this.credentialService.decryptMailboxCredential(
+      account.id,
+      account
     );
     const client = new ImapFlow({
       host: account.imap_host,

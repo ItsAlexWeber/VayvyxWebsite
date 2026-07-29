@@ -35,7 +35,10 @@ export type MailAccountSafe = {
 };
 
 export type MailAccountPrivate = MailAccountSafe & {
-  credential_secret_id: string;
+  credential_ciphertext: string;
+  credential_iv: string;
+  credential_auth_tag: string;
+  credential_key_version: number;
 };
 
 export type MailAccountMember = {

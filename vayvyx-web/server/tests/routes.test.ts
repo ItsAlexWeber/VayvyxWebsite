@@ -12,6 +12,7 @@ const auth = {
 };
 
 function createTestApp() {
+  const closedMailboxes: string[] = [];
   const app = express();
   app.use(express.json());
   app.use((request, _response, next) => {
@@ -41,8 +42,13 @@ function createTestApp() {
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         }),
+        rotateCredentials: async () => ({ ok: true }),
       },
-      connectionManager: {},
+      connectionManager: {
+        closeMailbox: async (mailAccountId: string) => {
+          closedMailboxes.push(mailAccountId);
+        },
+      },
       audit: {},
     } as never)
   );
@@ -61,12 +67,13 @@ function createTestApp() {
       response.status(500).json({ error: { code: "INTERNAL_ERROR" } });
     }
   );
-  return app;
+  return { app, closedMailboxes };
 }
 
 describe("mail admin routes", () => {
-  it("accepts a create password but never returns credentials or Vault ids", async () => {
-    const response = await request(createTestApp())
+  it("accepts a create password but never returns credentials or encryption fields", async () => {
+    const { app } = createTestApp();
+    const response = await request(app)
       .post("/api/mail/admin/accounts")
       .send({
         emailAddress: "support@vayvyx.com",
@@ -86,11 +93,28 @@ describe("mail admin routes", () => {
 
     expect(JSON.stringify(response.body)).not.toContain("mailbox password");
     expect(response.body).not.toHaveProperty("credential_secret_id");
+    expect(response.body).not.toHaveProperty("credential_ciphertext");
+    expect(response.body).not.toHaveProperty("credential_iv");
+    expect(response.body).not.toHaveProperty("credential_auth_tag");
+    expect(response.body).not.toHaveProperty("credential_key_version");
   });
 
   it("rejects short user directory searches", async () => {
-    await request(createTestApp())
+    const { app } = createTestApp();
+    await request(app)
       .get("/api/mail/admin/users/search?q=a")
       .expect(400);
+  });
+
+  it("invalidates cached mailbox connections after credential rotation", async () => {
+    const { app, closedMailboxes } = createTestApp();
+    const mailAccountId = "00000000-0000-4000-8000-000000000010";
+
+    await request(app)
+      .post(`/api/mail/admin/accounts/${mailAccountId}/credentials`)
+      .send({ password: "replacement mailbox password" })
+      .expect(200);
+
+    expect(closedMailboxes).toEqual([mailAccountId]);
   });
 });

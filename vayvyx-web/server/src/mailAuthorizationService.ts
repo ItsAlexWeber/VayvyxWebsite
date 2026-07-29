@@ -31,7 +31,7 @@ const safeAccountColumns = [
   "updated_at",
 ].join(",");
 
-const privateAccountColumns = `${safeAccountColumns},credential_secret_id`;
+const privateAccountColumns = `${safeAccountColumns},credential_ciphertext,credential_iv,credential_auth_tag,credential_key_version`;
 
 export type AuthorizedMailbox = {
   account: MailAccountPrivate;

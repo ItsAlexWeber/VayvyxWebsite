@@ -20,7 +20,10 @@ const account = {
   smtp_port: 465,
   smtp_secure: true,
   username: "support@vayvyx.com",
-  credential_secret_id: "00000000-0000-4000-8000-000000000099",
+  credential_ciphertext: Buffer.from("ciphertext").toString("base64"),
+  credential_iv: Buffer.alloc(12, 1).toString("base64"),
+  credential_auth_tag: Buffer.alloc(16, 2).toString("base64"),
+  credential_key_version: 1,
   from_name: null,
   reply_to_address: null,
   max_attachment_mb: 25,
@@ -284,6 +287,8 @@ describe("Phase 2 routes", () => {
 
     expect(response.body[0].emailAddress).toBe("support@vayvyx.com");
     expect(JSON.stringify(response.body)).not.toContain("credential_secret_id");
+    expect(JSON.stringify(response.body)).not.toContain("credential_ciphertext");
+    expect(JSON.stringify(response.body)).not.toContain("credential_auth_tag");
     expect(JSON.stringify(response.body)).not.toContain("username");
   });
 

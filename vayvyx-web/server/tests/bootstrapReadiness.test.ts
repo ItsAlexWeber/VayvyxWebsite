@@ -59,7 +59,7 @@ describe("mailbox creation readiness", () => {
     const inserts: Array<{ table: string; row: unknown }> = [];
     const service = new MailAdminService(
       creationAdmin({ inserts }),
-      vaultRecorder(),
+      credentialServiceRecorder(),
       { record: async () => undefined } as never
     );
 
@@ -68,14 +68,16 @@ describe("mailbox creation readiness", () => {
     expect(inserts.some((item) => item.table === "mail_identities")).toBe(true);
     expect(JSON.stringify(inserts)).toContain('"is_default":true');
     expect(JSON.stringify(inserts)).toContain('"access_role":"owner"');
+    const accountInsert = inserts.find((item) => item.table === "mail_accounts");
+    expect(JSON.stringify(accountInsert?.row)).toContain("credential_ciphertext");
+    expect(JSON.stringify(accountInsert?.row)).not.toContain("test password");
   });
 
-  it("compensates Vault and account rows when default identity creation fails", async () => {
+  it("compensates account rows when default identity creation fails", async () => {
     const deleted: string[] = [];
-    const vaultDeleted: string[] = [];
     const service = new MailAdminService(
       creationAdmin({ failIdentity: true, deleted }),
-      vaultRecorder(vaultDeleted),
+      credentialServiceRecorder(),
       { record: async () => undefined } as never
     );
 
@@ -84,7 +86,6 @@ describe("mailbox creation readiness", () => {
     ).rejects.toThrow("Mailbox default identity could not be created.");
 
     expect(deleted).toContain("mail_accounts");
-    expect(vaultDeleted).toContain("00000000-0000-4000-8000-000000000099");
   });
 });
 
@@ -137,14 +138,15 @@ function creationAdmin(options: {
   } as never;
 }
 
-function vaultRecorder(deleted: string[] = []) {
+function credentialServiceRecorder() {
   return {
-    createMailboxSecret: async () => "00000000-0000-4000-8000-000000000099",
-    rotateMailboxSecret: async () => undefined,
-    readMailboxSecret: async () => "secret",
-    deleteMailboxSecret: async (secretId: string) => {
-      deleted.push(secretId);
-    },
+    encryptMailboxCredential: () => ({
+      credential_ciphertext: Buffer.from("encrypted").toString("base64"),
+      credential_iv: Buffer.alloc(12, 1).toString("base64"),
+      credential_auth_tag: Buffer.alloc(16, 2).toString("base64"),
+      credential_key_version: 1,
+    }),
+    decryptMailboxCredential: () => "secret",
   };
 }
 

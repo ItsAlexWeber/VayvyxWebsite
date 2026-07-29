@@ -2,9 +2,9 @@
 
 ## Vayvyx Mail Phase 1
 
-This project now includes the Phase 1 foundation, Phase 2 backend mail operations, and Phase 3 frontend integration for Vayvyx Mail: a Node.js TypeScript backend, Supabase migrations, Vault-backed mailbox credential storage, admin mailbox APIs, safe mail-operation APIs, `/mail`, `/admin/mail/settings`, tests, and deployment examples.
+This project now includes the Phase 1 foundation, Phase 2 backend mail operations, and Phase 3 frontend integration for Vayvyx Mail: a Node.js TypeScript backend, Supabase migrations, server-side encrypted mailbox credential storage, admin mailbox APIs, safe mail-operation APIs, `/mail`, `/admin/mail/settings`, tests, and deployment examples.
 
-Backend secrets belong only in `/etc/vayvyx-mail.env`, using `deployment/vayvyx-mail.env.example` as the template. Do not put service-role keys, mailbox passwords, Vault values, or other backend secrets in `VITE_` variables.
+Backend secrets belong only in `/etc/vayvyx-mail.env`, using `deployment/vayvyx-mail.env.example` as the template. Do not put service-role keys, mailbox passwords, mail credential encryption keys, or other backend secrets in `VITE_` variables.
 
 See `docs/mail-deployment.md` for Supabase setup, local commands, VM deployment commands, and the remaining Phase 2/Phase 3 work.
 

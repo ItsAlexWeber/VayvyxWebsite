@@ -6,6 +6,7 @@ const config = loadConfig();
 const clients = createSupabaseClients(config);
 const { app, connectionManager } = createApp({
   clients,
+  mailCredentialMasterKey: config.mailCredentialMasterKey,
   connectionManagerOptions: {
     maxActiveConnections: config.mailMaxActiveConnections,
     idleMs: config.mailConnectionIdleMs,

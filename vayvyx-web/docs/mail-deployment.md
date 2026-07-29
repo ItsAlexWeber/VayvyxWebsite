@@ -1,6 +1,6 @@
 # Vayvyx Mail Phase 1 Deployment
 
-This document covers the secure foundation for Vayvyx Mail: database schema, RLS, Vault-backed mailbox credentials, backend deployment, and local verification.
+This document covers the secure foundation for Vayvyx Mail: database schema, RLS, server-side encrypted mailbox credentials, backend deployment, and local verification.
 
 ## Architecture
 
@@ -8,13 +8,12 @@ Vayvyx Mail uses Supabase Auth for one login per person. The browser sends the u
 
 The backend also owns a separate server administration Supabase client. That client uses `SUPABASE_SECRET_KEY` or the legacy `SUPABASE_SERVICE_ROLE_KEY` from `/etc/vayvyx-mail.env`. Browser bearer tokens are never used to configure the admin client.
 
-Mailbox passwords are stored in Supabase Vault. `public.mail_accounts.credential_secret_id` stores only the Vault secret identifier. The migration revokes browser access to that column and locks Vault wrapper functions to the `service_role` role.
+Mailbox passwords are encrypted only inside the Node backend with AES-256-GCM before storage. `public.mail_accounts` stores `credential_ciphertext`, `credential_iv`, `credential_auth_tag`, and `credential_key_version`; the migration does not grant those columns to browser roles. The AES master key lives only in `/etc/vayvyx-mail.env` as `MAIL_CREDENTIAL_MASTER_KEY` and is never exposed through `VITE_` variables or API responses.
 
 ## Supabase Setup
 
 1. Apply `supabase/migrations/202607280001_mail_foundation.sql`.
-2. Confirm the `supabase_vault` extension is enabled in the `vault` schema.
-3. Confirm `public.profiles.role` exists and allows only `user` or `admin`.
+2. Confirm `public.profiles.role` exists and allows only `user` or `admin`.
 4. Manually promote Alexander's profile:
 
 ```sql
@@ -23,14 +22,19 @@ set role = 'admin'
 where id = '<alexander-auth-user-id>';
 ```
 
-5. Confirm authenticated users do not have direct access to `credential_secret_id`:
+5. Confirm authenticated users do not have direct access to encrypted credential columns:
 
 ```sql
 select grantee, privilege_type
 from information_schema.column_privileges
 where table_schema = 'public'
   and table_name = 'mail_accounts'
-  and column_name = 'credential_secret_id';
+  and column_name in (
+    'credential_ciphertext',
+    'credential_iv',
+    'credential_auth_tag',
+    'credential_key_version'
+  );
 ```
 
 Only service/admin roles should have access.
@@ -40,21 +44,19 @@ Only service/admin roles should have access.
 The following objects must be available to the backend through Supabase APIs while RLS and grants remain restrictive:
 
 - `public.profiles`: backend reads `role`; browser access should remain governed by existing profile policies.
-- `public.mail_accounts`: backend service client reads/writes all fields; authenticated browser users may select only the safe granted columns, never `credential_secret_id`.
+- `public.mail_accounts`: backend service client reads/writes all fields; authenticated browser users may select only the safe granted columns, never encrypted credential columns.
 - `public.mail_account_members`: backend service client manages memberships; authenticated users may read only their own/permitted membership rows through RLS.
 - `public.mail_identities`: backend service client creates the default identity and validates selected identities; authenticated users may read identities only for permitted mailboxes.
 - `public.mail_audit_log`: backend service client writes audit entries; authenticated users may read only permitted non-sensitive audit rows.
-- RPC wrappers `public.mail_vault_create_secret`, `public.mail_vault_update_secret`, `public.mail_vault_read_secret`, and `public.mail_vault_delete_secret`: executable only by `service_role`.
 
 In Supabase, check table API availability from the Table Editor/API settings for each public table. Do not enable browser access by broad grants. Confirm:
 
 - RLS is enabled on all mail tables.
 - `anon` has no mail-table grants.
 - `authenticated` has only the explicit safe select grants from the migration.
-- `credential_secret_id` is not granted to `authenticated`.
-- The `vault` schema and `vault.decrypted_secrets` are not exposed to browser clients.
-- Vault wrapper functions are not executable by `anon` or `authenticated`.
-- The backend server secret/service-role key can execute the Vault wrapper RPCs.
+- Encrypted credential columns are not granted to `authenticated`.
+- No hosted secret-extension setup, schema exposure, or credential RPC wrappers are required for Vayvyx Mail.
+- The backend server secret/service-role key can read/write encrypted credential columns, while browser clients cannot.
 
 ## Server Environment
 
@@ -69,12 +71,21 @@ HOST=127.0.0.1
 SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_or_anon_key
 SUPABASE_SECRET_KEY=your_supabase_secret_or_service_role_key
+MAIL_CREDENTIAL_MASTER_KEY=base64_32_byte_random_key
 MAIL_MAX_ACTIVE_CONNECTIONS=8
 MAIL_CONNECTION_IDLE_MS=120000
 MAIL_CONNECTION_TEST_TIMEOUT_MS=15000
 ```
 
-Do not use a `VITE_` prefix for backend secrets. Do not commit `/etc/vayvyx-mail.env`.
+Generate `MAIL_CREDENTIAL_MASTER_KEY` with:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+Do not use a `VITE_` prefix for backend secrets. Do not commit `/etc/vayvyx-mail.env`. Losing this master key prevents decrypting stored mailbox passwords; rotate it only with a planned re-encryption procedure.
+
+Credential records use AES-256-GCM with a random 12-byte IV and 16-byte authentication tag. `credential_ciphertext`, `credential_iv`, and `credential_auth_tag` are stored as base64 text, with `credential_key_version=1`. Additional authenticated data is `vayvyx-mail:<mailAccountId>:v1`, so encrypted passwords are bound to one mailbox id. Password rotation re-encrypts the new password, updates only the encrypted credential columns, records an audit event, and closes cached IMAP connections for that mailbox.
 
 ## Local Commands
 
@@ -122,7 +133,7 @@ sudo systemctl reload caddy
 { "status": "ok" }
 ```
 
-It does not test Supabase, IMAP, SMTP, Vault, or any mailbox identity.
+It does not test Supabase, IMAP, SMTP, stored credentials, or any mailbox identity.
 
 ## Phase 1 Admin API
 
@@ -141,7 +152,7 @@ Implemented endpoints:
 - `DELETE /api/mail/admin/accounts/:mailAccountId/members/:userId`
 - `GET /api/mail/admin/users/search?q=...`
 
-The backend never returns mailbox passwords, decrypted Vault values, service keys, or `credential_secret_id`.
+The backend never returns mailbox passwords, decrypted credential values, encrypted credential columns, or service keys.
 
 `GET /api/mail/access` returns safe authorization metadata for route bootstrapping, including zero-mailbox platform-admin setup:
 
@@ -205,7 +216,7 @@ The backend applies a general authenticated limit of 180 requests per minute per
 
 ## Logging And Troubleshooting
 
-Server logs may include generic technical errors and route failures. Logs must not include passwords, Vault values, bearer tokens, raw MIME, message bodies, attachment contents, or full authentication headers.
+Server logs may include generic technical errors and route failures. Logs must not include passwords, encryption keys, decrypted credential values, bearer tokens, raw MIME, message bodies, attachment contents, or full authentication headers.
 
 ## Safe Rollback
 
@@ -260,13 +271,13 @@ Attachments download only after an explicit click. The frontend sends the bearer
 
 Compose, reply, reply all, and forward use a plain-text composer. The selected sending mailbox is visible. The user cannot type an arbitrary From address. Draft content remains in component state after a recoverable send failure.
 
-The admin settings page supports listing mailboxes, adding mailboxes, editing connection metadata, activating/deactivating, rotating credentials, testing IMAP/SMTP, and member access management through the safe user-search endpoint. It never displays saved passwords, Vault identifiers, or credential secret IDs. Password fields clear after submission handling.
+The admin settings page supports listing mailboxes, adding mailboxes, editing connection metadata, activating/deactivating, rotating credentials, testing IMAP/SMTP, and member access management through the safe user-search endpoint. It never displays saved passwords, encrypted credential fields, or credential internals. Password fields clear after submission handling.
 
 New mailboxes get a default sender identity from `mail_accounts.email_address` and `mail_accounts.from_name`. Advanced alias and identity management remains future work. Sending may omit `identityId`; when `identityId` is supplied, the backend validates that it belongs to the selected mailbox.
 
-Mailbox creation stores the submitted password in Vault, creates the mailbox, creates the default identity, and assigns ownership. If a later database step fails, the backend deletes the partially created mailbox row and compensates by deleting the unused Vault secret. Passwords are never returned.
+Mailbox creation generates the mailbox UUID before encryption, encrypts the submitted password with AES-256-GCM using AAD `vayvyx-mail:<mailAccountId>:v1`, creates the mailbox, creates the default identity, and assigns ownership. If a later database step fails, the backend deletes the partially created mailbox row. Passwords are never returned.
 
-Admin settings error states are intentionally generic and sanitized: access denied, session expired, migration/table unavailable, Vault/credential storage unavailable, duplicate mailbox, invalid settings, IMAP/SMTP test failure, and administrator access removed.
+Admin settings error states are intentionally generic and sanitized: access denied, session expired, migration/table unavailable, credential storage unavailable, duplicate mailbox, invalid settings, IMAP/SMTP test failure, and administrator access removed.
 
 Known limitations shown accurately in the UI:
 
@@ -337,12 +348,11 @@ npm run build
 ### C. Supabase
 
 1. Verify database backup availability in Supabase.
-2. Enable Vault.
-3. Apply `supabase/migrations/202607280001_mail_foundation.sql`.
-4. Verify the Data API readiness checklist above.
-5. Verify RLS is enabled on mail tables.
-6. Verify Vault RPC permissions.
-7. Promote Alexander:
+2. Apply `supabase/migrations/202607280001_mail_foundation.sql`.
+3. Verify the Data API readiness checklist above.
+4. Verify RLS is enabled on mail tables.
+5. Verify encrypted credential columns are not granted to `anon` or `authenticated`.
+6. Promote Alexander:
 
 ```sql
 update public.profiles
@@ -378,6 +388,7 @@ PORT=4174
 SUPABASE_URL=...
 SUPABASE_PUBLISHABLE_KEY=...
 SUPABASE_SECRET_KEY=...
+MAIL_CREDENTIAL_MASTER_KEY=...
 MAIL_MAX_ACTIVE_CONNECTIONS=8
 MAIL_CONNECTION_IDLE_MS=120000
 MAIL_CONNECTION_TEST_TIMEOUT_MS=15000
@@ -461,4 +472,4 @@ npm ci
 npm run build
 ```
 
-Do not drop mail tables or Vault secrets as an emergency rollback step. Preserve data for investigation.
+Do not drop mail tables or overwrite the mail credential master key as an emergency rollback step. Preserve data for investigation.

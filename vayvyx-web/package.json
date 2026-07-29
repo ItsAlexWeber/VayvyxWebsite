@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vite",
     "dev:server": "tsx watch server/src/index.ts",
-    "build": "tsc -b && vite build",
+    "build": "node -e \"require('fs').rmSync('dist-server',{recursive:true,force:true})\" && tsc -b --clean && tsc -b && vite build",
     "start:server": "node dist-server/index.js",
     "test": "vitest run",
     "lint": "eslint .",

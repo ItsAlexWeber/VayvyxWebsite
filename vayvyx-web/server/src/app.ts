@@ -15,32 +15,37 @@ import { MailAdminService } from "./mailAdminService.js";
 import { MailAuthorizationService } from "./mailAuthorizationService.js";
 import { ImapSmtpMailProvider } from "./mailProvider.js";
 import {
-  SupabaseVaultMailCredentialVault,
-  type MailCredentialVault,
-} from "./vault.js";
+  AesGcmMailCredentialService,
+  type MailCredentialService,
+} from "./credentialCrypto.js";
 import { mailRateLimitKey } from "./rateLimitKey.js";
 
 export type CreateAppOptions = {
   clients: AppSupabaseClients;
-  vault?: MailCredentialVault;
+  credentialService?: MailCredentialService;
+  mailCredentialMasterKey?: Buffer;
   connectionManagerOptions: MailConnectionManagerOptions;
 };
 
 export function createApp(options: CreateAppOptions) {
   const app = express();
-  const vault =
-    options.vault ?? new SupabaseVaultMailCredentialVault(options.clients.admin);
+  if (!options.credentialService && !options.mailCredentialMasterKey) {
+    throw new Error("Mail credential encryption is not configured.");
+  }
+  const credentialService =
+    options.credentialService ??
+    new AesGcmMailCredentialService(options.mailCredentialMasterKey as Buffer);
   const audit = new AuditLogger(options.clients.admin);
   const mailAdminService = new MailAdminService(
     options.clients.admin,
-    vault,
+    credentialService,
     audit
   );
   const mailAuthorizationService = new MailAuthorizationService(
     options.clients.admin
   );
   const connectionManager = new MailConnectionManager(
-    vault,
+    credentialService,
     options.connectionManagerOptions
   );
   const mailProvider = new ImapSmtpMailProvider(connectionManager);

@@ -1,15 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
 import { HttpError } from "./httpError.js";
 import type { AuditLogger } from "./audit.js";
 import { hasMailboxRole } from "./auth.js";
 import type {
   AuthContext,
-  MailAccountMember,
   MailAccountPrivate,
+  MailAccountMember,
   MailAccountSafe,
   MailboxAccessRole,
 } from "./types.js";
-import type { MailCredentialVault } from "./vault.js";
+import type { MailCredentialService } from "./credentialCrypto.js";
 import { toAdminAccountDto, toMemberDto } from "./dto.js";
 import type { MailAdminUserSearchResult } from "./dto.js";
 import type {
@@ -44,12 +45,12 @@ const safeAccountColumns = [
   "updated_at",
 ].join(",");
 
-const privateAccountColumns = `${safeAccountColumns},credential_secret_id`;
+const privateAccountColumns = `${safeAccountColumns},credential_ciphertext,credential_iv,credential_auth_tag,credential_key_version`;
 
 export class MailAdminService {
   constructor(
     private readonly admin: SupabaseClient,
-    private readonly vault: MailCredentialVault,
+    private readonly credentialService: MailCredentialService,
     private readonly audit: AuditLogger
   ) {}
 
@@ -121,10 +122,12 @@ export class MailAdminService {
       throw new HttpError(403, "ACCESS_DENIED", "Only platform admins may create mailboxes.");
     }
 
-    const credentialSecretId = await this.vault.createMailboxSecret({
-      emailAddress: input.emailAddress,
-      password: input.password,
-    });
+    const mailAccountId = randomUUID();
+    const encryptedCredential =
+      this.credentialService.encryptMailboxCredential(
+        mailAccountId,
+        input.password
+      );
 
     let createdAccount: MailAccountSafe | null = null;
 
@@ -133,6 +136,7 @@ export class MailAdminService {
         .from("mail_accounts")
         .insert({
           email_address: input.emailAddress,
+          id: mailAccountId,
           display_name: input.displayName,
           description: input.description,
           imap_host: input.imapHost,
@@ -142,7 +146,7 @@ export class MailAdminService {
           smtp_port: input.smtpPort,
           smtp_secure: input.smtpSecure,
           username: input.username,
-          credential_secret_id: credentialSecretId,
+          ...encryptedCredential,
           from_name: input.fromName,
           reply_to_address: input.replyToAddress,
           max_attachment_mb: input.maxAttachmentMb,
@@ -210,7 +214,6 @@ export class MailAdminService {
           .eq("id", createdAccount.id);
       }
 
-      await this.vault.deleteMailboxSecret(credentialSecretId);
       throw error;
     }
 
@@ -296,12 +299,22 @@ export class MailAdminService {
   ) {
     await this.requireMailboxAdmin(auth, mailAccountId);
     const account = await this.getPrivateAccount(mailAccountId);
+    const encryptedCredential =
+      this.credentialService.encryptMailboxCredential(mailAccountId, password);
 
-    await this.vault.rotateMailboxSecret({
-      secretId: account.credential_secret_id,
-      emailAddress: account.email_address,
-      password,
-    });
+    const { error } = await this.admin
+      .from("mail_accounts")
+      .update(encryptedCredential)
+      .eq("id", mailAccountId);
+
+    if (error) {
+      throw new HttpError(
+        400,
+        "INVALID_REQUEST",
+        "Unable to rotate mailbox credentials.",
+        error
+      );
+    }
 
     await this.audit.record({
       actorUserId: auth.userId,
