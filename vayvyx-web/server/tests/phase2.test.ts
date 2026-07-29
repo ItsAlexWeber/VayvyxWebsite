@@ -1,6 +1,6 @@
 import express from "express";
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { isHttpError } from "../src/httpError.js";
 import { sanitizeAttachmentFilename } from "../src/filename.js";
 import { normalizeSpecialUse } from "../src/mailProvider.js";
@@ -399,6 +399,188 @@ describe("Phase 2 safety helpers", () => {
       message: "Mailbox folders are temporarily unavailable.",
     });
   });
+
+  it("lists one existing INBOX message without accidental filters", async () => {
+    const searchCalls: unknown[] = [];
+    const fetchCalls: unknown[] = [];
+    const provider = messageProvider({
+      exists: 1,
+      searchCalls,
+      fetchCalls,
+      messages: [messageFixture({ seq: 1, uid: 101 })],
+    });
+
+    const page = await provider.listMessages(account, defaultMessageInput());
+
+    expect(searchCalls).toEqual([]);
+    expect(fetchCalls).toEqual([
+      {
+        range: "1:1",
+        options: { uid: false },
+      },
+    ]);
+    expect(page.messages).toHaveLength(1);
+    expect(page.messages[0]?.uid).toBe(101);
+  });
+
+  it("logs safe message-list diagnostics without message content", async () => {
+    const infoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const provider = messageProvider({
+      exists: 1,
+      messages: [messageFixture({ seq: 1, uid: 101 })],
+    });
+
+    await provider.listMessages(account, defaultMessageInput());
+
+    expect(infoSpy).toHaveBeenCalledWith("Vayvyx Mail message listing", {
+      mailAccountId: account.id,
+      folder: "INBOX",
+      mailboxExists: 1,
+      searchResultCount: null,
+      fetchResultCount: 1,
+    });
+    expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("Message 101");
+    expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("sender@example.com");
+    infoSpy.mockRestore();
+  });
+
+  it("lists multiple messages newest first by UID", async () => {
+    const provider = messageProvider({
+      exists: 3,
+      messages: [
+        messageFixture({ seq: 1, uid: 7 }),
+        messageFixture({ seq: 2, uid: 9 }),
+        messageFixture({ seq: 3, uid: 12 }),
+      ],
+    });
+
+    const page = await provider.listMessages(account, {
+      ...defaultMessageInput(),
+      limit: 3,
+    });
+
+    expect(page.messages.map((message) => message.uid)).toEqual([12, 9, 7]);
+  });
+
+  it("includes messages older than one day", async () => {
+    const oldDate = new Date("2026-07-20T12:00:00.000Z");
+    const provider = messageProvider({
+      exists: 1,
+      messages: [messageFixture({ seq: 1, uid: 42, date: oldDate })],
+    });
+
+    const page = await provider.listMessages(account, defaultMessageInput());
+
+    expect(page.messages[0]?.uid).toBe(42);
+    expect(page.messages[0]?.receivedAt).toBe(oldDate.toISOString());
+  });
+
+  it("uses UID search and fetch for unread filters", async () => {
+    const searchCalls: unknown[] = [];
+    const fetchCalls: unknown[] = [];
+    const provider = messageProvider({
+      exists: 5,
+      searchCalls,
+      fetchCalls,
+      searchResult: [103, 105],
+      messages: [
+        messageFixture({ seq: 3, uid: 103, flags: [] }),
+        messageFixture({ seq: 5, uid: 105, flags: [] }),
+      ],
+    });
+
+    const page = await provider.listMessages(account, {
+      ...defaultMessageInput(),
+      unreadOnly: true,
+    });
+
+    expect(searchCalls).toEqual([{ query: { seen: false }, options: { uid: true } }]);
+    expect(fetchCalls).toEqual([{ range: [105, 103], options: { uid: true } }]);
+    expect(page.messages.map((message) => message.uid)).toEqual([105, 103]);
+    expect(page.messages.every((message) => message.unread)).toBe(true);
+  });
+
+  it("uses UID search and fetch for flagged filters", async () => {
+    const searchCalls: unknown[] = [];
+    const fetchCalls: unknown[] = [];
+    const provider = messageProvider({
+      exists: 5,
+      searchCalls,
+      fetchCalls,
+      searchResult: [201],
+      messages: [messageFixture({ seq: 2, uid: 201, flags: new Set(["\\Flagged"]) })],
+    });
+
+    const page = await provider.listMessages(account, {
+      ...defaultMessageInput(),
+      flaggedOnly: true,
+    });
+
+    expect(searchCalls).toEqual([{ query: { flagged: true }, options: { uid: true } }]);
+    expect(fetchCalls).toEqual([{ range: [201], options: { uid: true } }]);
+    expect(page.messages[0]?.uid).toBe(201);
+    expect(page.messages[0]?.flagged).toBe(true);
+  });
+
+  it("returns an empty page for an empty folder without searching", async () => {
+    const searchCalls: unknown[] = [];
+    const fetchCalls: unknown[] = [];
+    const provider = messageProvider({
+      exists: 0,
+      searchCalls,
+      fetchCalls,
+      messages: [],
+    });
+
+    const page = await provider.listMessages(account, defaultMessageInput());
+
+    expect(page).toEqual({ messages: [], nextCursor: null });
+    expect(searchCalls).toEqual([]);
+    expect(fetchCalls).toEqual([]);
+  });
+
+  it("returns a typed error when message retrieval fails", async () => {
+    const provider = messageProvider({
+      exists: 1,
+      fetchError: new Error("raw fetch failure"),
+      messages: [],
+    });
+
+    await expect(provider.listMessages(account, defaultMessageInput())).rejects.toMatchObject({
+      status: 502,
+      code: "MAILBOX_UNAVAILABLE",
+      message: "Mailbox messages are temporarily unavailable.",
+    });
+  });
+
+  it("releases mailbox locks after failed message retrieval", async () => {
+    const events: string[] = [];
+    const provider = new ImapSmtpMailProvider({
+      withImapClient: async (_account, operation) => {
+        events.push("lock");
+        try {
+          return await operation({
+            mailboxOpen: async () => ({ exists: 1 }),
+            search: async () => [],
+            fetch: () =>
+              (async function* () {
+                const shouldYield = Boolean("");
+                if (shouldYield) yield {};
+                throw new Error("raw fetch failure");
+              })(),
+          });
+        } finally {
+          events.push("release");
+        }
+      },
+      createSmtpTransport: async () => ({}) as never,
+    });
+
+    await expect(provider.listMessages(account, defaultMessageInput())).rejects.toMatchObject({
+      code: "MAILBOX_UNAVAILABLE",
+    });
+    expect(events).toEqual(["lock", "release"]);
+  });
 });
 
 describe("Phase 2 routes", () => {
@@ -573,3 +755,94 @@ describe("Phase 2 routes", () => {
       .expect(403);
   });
 });
+
+function defaultMessageInput() {
+  return {
+    folder: "INBOX",
+    limit: 50,
+    unreadOnly: false,
+    flaggedOnly: false,
+    sortDirection: "desc" as const,
+  };
+}
+
+function messageProvider(options: {
+  exists: number;
+  messages: Array<Record<string, unknown>>;
+  searchResult?: number[] | false;
+  searchCalls?: unknown[];
+  fetchCalls?: unknown[];
+  fetchError?: Error;
+}) {
+  return new ImapSmtpMailProvider({
+    withImapClient: async (_account, operation) =>
+      operation({
+        mailboxOpen: async (path: string) => {
+          expect(path).toBe("INBOX");
+          return { exists: options.exists };
+        },
+        search: async (
+          query: Record<string, unknown>,
+          searchOptions?: { uid?: boolean }
+        ) => {
+          options.searchCalls?.push({ query, options: searchOptions });
+          return options.searchResult ?? [];
+        },
+        fetch: (
+          range: string | number[],
+          _query: Record<string, unknown>,
+          fetchOptions?: { uid?: boolean }
+        ) => {
+          options.fetchCalls?.push({ range, options: fetchOptions });
+          const selected = selectFetchedMessages(options.messages, range);
+          const fetchError = options.fetchError;
+
+          return (async function* () {
+            if (fetchError) throw fetchError;
+            for (const message of selected) {
+              yield message;
+            }
+          })();
+        },
+      }),
+    createSmtpTransport: async () => ({}) as never,
+  });
+}
+
+function selectFetchedMessages(
+  messages: Array<Record<string, unknown>>,
+  range: string | number[]
+) {
+  if (Array.isArray(range)) {
+    const allowed = new Set(range);
+    return messages.filter((message) => allowed.has(Number(message.uid)));
+  }
+
+  const [start, end] = range.split(":").map((value) => Number(value));
+  return messages.filter((message) => {
+    const seq = Number(message.seq);
+    return seq >= start && seq <= end;
+  });
+}
+
+function messageFixture(input: {
+  seq: number;
+  uid: number;
+  date?: Date;
+  flags?: string[] | Set<string>;
+}) {
+  return {
+    seq: input.seq,
+    uid: input.uid,
+    envelope: {
+      date: input.date ?? new Date(`2026-07-28T12:0${input.seq}:00.000Z`),
+      subject: `Message ${input.uid}`,
+      messageId: `<${input.uid}@vayvyx.test>`,
+      from: [{ name: "Sender", address: "sender@example.com" }],
+      to: [{ name: null, address: "support@vayvyx.com" }],
+    },
+    flags: input.flags ?? ["\\Seen"],
+    bodyStructure: {},
+    source: Buffer.from(`Preview ${input.uid}`),
+  };
+}

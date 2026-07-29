@@ -126,46 +126,75 @@ export class ImapSmtpMailProvider implements MailProvider {
     return this.deps.withImapClient(account, async (client) => {
       const imap = client as {
         mailboxOpen: (path: string) => Promise<{ exists: number }>;
-        search: (query: Record<string, unknown>) => Promise<number[]>;
-        fetch: (range: string | number[], options: Record<string, unknown>) => AsyncIterable<Record<string, unknown>>;
+        search: (query: Record<string, unknown>, options?: { uid?: boolean }) => Promise<number[] | false>;
+        fetch: (
+          range: string | number[],
+          query: Record<string, unknown>,
+          options?: { uid?: boolean }
+        ) => AsyncIterable<Record<string, unknown>>;
       };
-      await imap.mailboxOpen(input.folder);
-      const query: Record<string, unknown> = {};
-      if (input.unreadOnly) query.seen = false;
-      if (input.flaggedOnly) query.flagged = true;
-      if (input.search) query.or = [{ subject: input.search }, { body: input.search }];
-      const uids = await imap.search(query);
-      const sorted = [...uids].sort((a, b) => input.sortDirection === "asc" ? a - b : b - a);
-      const afterCursor = input.cursor
-        ? sorted.filter((uid) => input.sortDirection === "asc" ? uid > input.cursor! : uid < input.cursor!)
-        : sorted;
-      const page = afterCursor.slice(0, input.limit);
+      const mailbox = await imap.mailboxOpen(input.folder);
+      const mailboxExists = Number(mailbox.exists) || 0;
       const messages: MailMessageSummary[] = [];
+      let searchResultCount: number | null = null;
+      let fetchResultCount = 0;
 
-      if (page.length > 0) {
-        for await (const item of imap.fetch(page, {
-          uid: true,
-          envelope: true,
-          flags: true,
-          bodyStructure: true,
-          source: { maxBytes: 4096 },
-        })) {
-          messages.push(toSummary(account.id, input.folder, item));
+      try {
+        const selection = await selectMessagePage(imap, input, mailboxExists);
+        searchResultCount = selection.searchResultCount;
+
+        if (selection.range) {
+          for await (const item of imap.fetch(
+            selection.range,
+            {
+              uid: true,
+              envelope: true,
+              flags: true,
+              bodyStructure: true,
+              source: { maxLength: 4096 },
+            },
+            { uid: selection.rangeUsesUid }
+          )) {
+            fetchResultCount += 1;
+            messages.push(toSummary(account.id, input.folder, item));
+          }
         }
+
+        messages.sort((a, b) =>
+          input.sortDirection === "asc" ? a.uid - b.uid : b.uid - a.uid
+        );
+
+        logMessageListDiagnostic({
+          mailAccountId: account.id,
+          folder: input.folder,
+          mailboxExists,
+          searchResultCount,
+          fetchResultCount,
+        });
+
+        return {
+          messages,
+          nextCursor:
+            messages.length === input.limit
+              ? messages[messages.length - 1]?.uid ?? null
+              : null,
+        };
+      } catch (error) {
+        logMessageListDiagnostic({
+          mailAccountId: account.id,
+          folder: input.folder,
+          mailboxExists,
+          searchResultCount,
+          fetchResultCount,
+        });
+
+        throw new HttpError(
+          502,
+          "MAILBOX_UNAVAILABLE",
+          "Mailbox messages are temporarily unavailable.",
+          error
+        );
       }
-
-      messages.sort((a, b) => {
-        const left = a.receivedAt ?? a.sentAt ?? "";
-        const right = b.receivedAt ?? b.sentAt ?? "";
-        return input.sortDirection === "asc"
-          ? left.localeCompare(right)
-          : right.localeCompare(left);
-      });
-
-      return {
-        messages,
-        nextCursor: page.length === input.limit ? page[page.length - 1] ?? null : null,
-      };
     });
   }
 
@@ -302,9 +331,87 @@ export function normalizeSpecialUse(value: unknown): MailFolder["specialUse"] {
   return "custom";
 }
 
+async function selectMessagePage(
+  imap: {
+    search: (query: Record<string, unknown>, options?: { uid?: boolean }) => Promise<number[] | false>;
+  },
+  input: MessageListInput,
+  mailboxExists: number
+): Promise<{
+  range: string | number[] | null;
+  rangeUsesUid: boolean;
+  searchResultCount: number | null;
+}> {
+  const query: Record<string, unknown> = {};
+  if (input.unreadOnly) query.seen = false;
+  if (input.flaggedOnly) query.flagged = true;
+  if (input.search) {
+    query.or = [{ subject: input.search }, { body: input.search }];
+  }
+
+  const hasFilters = Object.keys(query).length > 0;
+
+  if (hasFilters || input.cursor) {
+    const found = await imap.search(hasFilters ? query : { all: true }, {
+      uid: true,
+    });
+    const uids = Array.isArray(found) ? found : [];
+    const sorted = [...uids].sort((a, b) =>
+      input.sortDirection === "asc" ? a - b : b - a
+    );
+    const afterCursor = input.cursor
+      ? sorted.filter((uid) =>
+          input.sortDirection === "asc" ? uid > input.cursor! : uid < input.cursor!
+        )
+      : sorted;
+    const page = afterCursor.slice(0, input.limit);
+
+    return {
+      range: page.length > 0 ? page : null,
+      rangeUsesUid: true,
+      searchResultCount: uids.length,
+    };
+  }
+
+  if (mailboxExists <= 0) {
+    return { range: null, rangeUsesUid: false, searchResultCount: null };
+  }
+
+  const start =
+    input.sortDirection === "asc"
+      ? 1
+      : Math.max(1, mailboxExists - input.limit + 1);
+  const end =
+    input.sortDirection === "asc"
+      ? Math.min(mailboxExists, input.limit)
+      : mailboxExists;
+
+  return {
+    range: `${start}:${end}`,
+    rangeUsesUid: false,
+    searchResultCount: null,
+  };
+}
+
+function logMessageListDiagnostic(input: {
+  mailAccountId: string;
+  folder: string;
+  mailboxExists: number;
+  searchResultCount: number | null;
+  fetchResultCount: number;
+}) {
+  console.info("Vayvyx Mail message listing", {
+    mailAccountId: input.mailAccountId,
+    folder: input.folder,
+    mailboxExists: input.mailboxExists,
+    searchResultCount: input.searchResultCount,
+    fetchResultCount: input.fetchResultCount,
+  });
+}
+
 function toSummary(mailAccountId: string, folder: string, item: Record<string, unknown>): MailMessageSummary {
   const envelope = (item.envelope ?? {}) as Record<string, unknown>;
-  const flags = Array.isArray(item.flags) ? item.flags.map(String) : [];
+  const flags = flagList(item.flags);
   const from = firstAddress(envelope.from);
   const to = addressList(envelope.to);
   const source = typeof item.source === "string" ? item.source : Buffer.isBuffer(item.source) ? item.source.toString("utf8") : "";
@@ -328,6 +435,12 @@ function toSummary(mailAccountId: string, folder: string, item: Record<string, u
     inReplyTo: typeof envelope.inReplyTo === "string" ? envelope.inReplyTo : null,
     references: Array.isArray(envelope.references) ? envelope.references.map(String) : [],
   };
+}
+
+function flagList(value: unknown) {
+  if (value instanceof Set) return [...value].map(String);
+  if (Array.isArray(value)) return value.map(String);
+  return [];
 }
 
 function toDetail(
