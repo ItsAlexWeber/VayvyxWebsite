@@ -2,6 +2,7 @@
  * @vitest-environment jsdom
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MailComposeModal } from "./mailComposeModal.tsx";
 import { MailAccountSwitcher } from "./mailAccountSwitcher.tsx";
@@ -9,6 +10,11 @@ import { MailFolderSidebar } from "./mailFolderSidebar.tsx";
 import { MailMessageList } from "./mailMessageList.tsx";
 import { MailMessageViewer } from "./mailMessageViewer.tsx";
 import { MailNavigationRail } from "./mailNavigationRail.tsx";
+import {
+  mailNavigationCollapsedStorageKey,
+  readMailNavigationCollapsedPreference,
+  writeMailNavigationCollapsedPreference,
+} from "./mailNavigationPreference.ts";
 import { MailToolbar } from "./mailToolbar.tsx";
 import { buildEmailSrcDoc, prepareEmailHtml } from "./safeEmailHtml.ts";
 import type {
@@ -97,6 +103,8 @@ const summary: MailMessageSummary = {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
+  vi.restoreAllMocks();
 });
 
 describe("mail frontend components", () => {
@@ -264,14 +272,15 @@ describe("mail frontend components", () => {
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ uid: 26 }));
   });
 
-  it("keeps mailbox navigation compact and compose visible only once in the pane", () => {
+  it("shows the full compose button in the expanded navigation pane", () => {
+    const onCompose = vi.fn();
     render(
       <MailAccountSwitcher
         accounts={[{ ...account, currentUserRole: "admin" }]}
         selectedId="mailbox-1"
         isUnified={false}
         canCompose
-        onCompose={vi.fn()}
+        onCompose={onCompose}
         onSelectUnified={vi.fn()}
         onSelectAccount={vi.fn()}
       />
@@ -280,12 +289,18 @@ describe("mail frontend components", () => {
     expect(screen.queryByText("admin")).toBeNull();
     expect(screen.queryByText("Mail settings")).toBeNull();
     expect(screen.getAllByText("Compose")).toHaveLength(1);
+    fireEvent.click(screen.getByText("Compose"));
+    expect(onCompose).toHaveBeenCalledTimes(1);
   });
 
   it("renders rail navigation actions with authorized settings visibility", () => {
     const { rerender } = render(
       <MailNavigationRail
         canManage={false}
+        canCompose={false}
+        isMailNavigationCollapsed={false}
+        onCompose={vi.fn()}
+        onToggleMailNavigation={vi.fn()}
         onHome={vi.fn()}
         onAccount={vi.fn()}
         onSettings={vi.fn()}
@@ -300,6 +315,10 @@ describe("mail frontend components", () => {
     rerender(
       <MailNavigationRail
         canManage
+        canCompose={false}
+        isMailNavigationCollapsed={false}
+        onCompose={vi.fn()}
+        onToggleMailNavigation={vi.fn()}
         onHome={vi.fn()}
         onAccount={vi.fn()}
         onSettings={vi.fn()}
@@ -308,22 +327,128 @@ describe("mail frontend components", () => {
     expect(screen.getByLabelText("Mail settings")).toBeTruthy();
   });
 
+  it("shows the rail compose icon while navigation is collapsed", () => {
+    const onCompose = vi.fn();
+    render(
+      <MailNavigationRail
+        canManage={false}
+        canCompose
+        isMailNavigationCollapsed
+        onCompose={onCompose}
+        onToggleMailNavigation={vi.fn()}
+        onHome={vi.fn()}
+        onAccount={vi.fn()}
+        onSettings={vi.fn()}
+      />
+    );
+
+    const compose = screen.getByLabelText("Compose new email");
+    expect(compose.getAttribute("title")).toBe("New email");
+    fireEvent.click(compose);
+    expect(onCompose).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the same compose flow from pane and rail entry points", () => {
+    const onCompose = vi.fn();
+    render(
+      <>
+        <MailAccountSwitcher
+          accounts={[{ ...account, currentUserRole: "sender" }]}
+          selectedId="mailbox-1"
+          isUnified={false}
+          canCompose
+          onCompose={onCompose}
+          onSelectUnified={vi.fn()}
+          onSelectAccount={vi.fn()}
+        />
+        <MailNavigationRail
+          canManage={false}
+          canCompose
+          isMailNavigationCollapsed
+          onCompose={onCompose}
+          onToggleMailNavigation={vi.fn()}
+          onHome={vi.fn()}
+          onAccount={vi.fn()}
+          onSettings={vi.fn()}
+        />
+      </>
+    );
+
+    fireEvent.click(screen.getByText("Compose"));
+    fireEvent.click(screen.getByLabelText("Compose new email"));
+    expect(onCompose).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the navigation toggle visible and reversible after collapse", () => {
+    render(<MailRailHarness initialCollapsed />);
+
+    const expand = screen.getByLabelText("Expand mail navigation");
+    expect(expand.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(expand);
+
+    const collapse = screen.getByLabelText("Collapse mail navigation");
+    expect(collapse.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("supports keyboard activation for permanent rail actions", () => {
+    const onCompose = vi.fn();
+    render(
+      <MailNavigationRail
+        canManage={false}
+        canCompose
+        isMailNavigationCollapsed
+        onCompose={onCompose}
+        onToggleMailNavigation={vi.fn()}
+        onHome={vi.fn()}
+        onAccount={vi.fn()}
+        onSettings={vi.fn()}
+      />
+    );
+
+    const compose = screen.getByLabelText("Compose new email");
+    compose.focus();
+    fireEvent.keyDown(compose, { key: " " });
+    expect(onCompose).toHaveBeenCalledTimes(1);
+
+    cleanup();
+    render(<MailRailHarness initialCollapsed={false} />);
+    const collapse = screen.getByLabelText("Collapse mail navigation");
+    collapse.focus();
+    fireEvent.keyDown(collapse, { key: "Enter" });
+    expect(screen.getByLabelText("Expand mail navigation")).toBeTruthy();
+  });
+
+  it("defaults malformed persisted navigation state to expanded", () => {
+    window.localStorage.setItem(mailNavigationCollapsedStorageKey, "not-a-boolean");
+    expect(readMailNavigationCollapsedPreference()).toBe(false);
+
+    writeMailNavigationCollapsedPreference(true);
+    expect(readMailNavigationCollapsedPreference()).toBe(true);
+    writeMailNavigationCollapsedPreference(false);
+    expect(readMailNavigationCollapsedPreference()).toBe(false);
+  });
+
   it("renders compact toolbar filters as selected only when active", () => {
+    const onCompose = vi.fn();
     render(
       <MailToolbar
         title="Inbox"
         search=""
         unreadOnly
         flaggedOnly={false}
+        canCompose
         onSearch={vi.fn()}
         onUnreadOnly={vi.fn()}
         onFlaggedOnly={vi.fn()}
+        onCompose={onCompose}
         onRefresh={vi.fn()}
       />
     );
 
     expect(screen.getByTitle("Unread only").getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByTitle("Flagged only").getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(screen.getByLabelText("Compose new email"));
+    expect(onCompose).toHaveBeenCalledTimes(1);
     expect(screen.getByLabelText("Message options")).toBeTruthy();
   });
 
@@ -364,5 +489,23 @@ describe("mail frontend components", () => {
 
     expect(screen.getByLabelText("To")).toHaveProperty("value", "reply@example.com");
     expect(screen.getByLabelText("Cc")).toHaveProperty("value", "alex@example.com");
+    expect(screen.getByText("Templates")).toBeTruthy();
   });
 });
+
+function MailRailHarness({ initialCollapsed }: { initialCollapsed: boolean }) {
+  const [isCollapsed, setIsCollapsed] = useState(initialCollapsed);
+
+  return (
+    <MailNavigationRail
+      canManage={false}
+      canCompose
+      isMailNavigationCollapsed={isCollapsed}
+      onCompose={vi.fn()}
+      onToggleMailNavigation={() => setIsCollapsed((current) => !current)}
+      onHome={vi.fn()}
+      onAccount={vi.fn()}
+      onSettings={vi.fn()}
+    />
+  );
+}

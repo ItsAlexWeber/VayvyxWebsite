@@ -11,6 +11,13 @@ describe("mail frontend layout CSS", () => {
     expect(mailCss).toContain("56px clamp(220px, 17vw, 250px)");
     expect(mailCss).toContain("minmax(340px, 420px)");
     expect(mailCss).toContain(".mail-navigation-rail");
+    expect(mailCss).toContain(".mail-page.nav-collapsed");
+    expect(mailCss).toContain('grid-template-areas: "rail list"');
+    expect(mailCss).toContain("grid-template-columns: 56px minmax(340px, 1fr)");
+    expect(mailCss).toContain(".mail-page:not(.nav-collapsed) .mail-rail-compose");
+    expect(mailCss).toContain(".mail-toolbar-compose");
+    expect(mailCss).toContain(".mail-page.nav-collapsed .mail-shell-sidebar.mobile-active");
+    expect(mailCss).toContain("transition: grid-template-columns 160ms ease");
     expect(mailCss).toContain("overflow: hidden");
     expect(mailCss).toContain("overflow-x: hidden");
     expect(mailCss).toContain("scrollbar-width: thin");

@@ -15,6 +15,7 @@
   overflow: hidden;
   padding: 0.5rem;
   color: #f8fbff;
+  transition: grid-template-columns 160ms ease;
 }
 
 .mail-page.has-reader {
@@ -83,8 +84,7 @@
   padding: 0.45rem;
 }
 
-.mail-navigation-rail button,
-.mail-pane-collapse {
+.mail-navigation-rail button {
   display: inline-grid;
   place-items: center;
   min-height: 40px;
@@ -95,11 +95,14 @@
 }
 
 .mail-navigation-rail button:hover,
-.mail-pane-collapse:hover,
 .mail-navigation-rail button.active {
   border-color: rgba(119, 255, 228, 0.28);
   color: #f8fbff;
   background: rgba(119, 255, 228, 0.1);
+}
+
+.mail-page:not(.nav-collapsed) .mail-rail-compose {
+  display: none;
 }
 
 .mail-shell-sidebar {
@@ -165,12 +168,6 @@
   min-width: 0;
 }
 
-.mail-pane-collapse {
-  width: 34px;
-  min-height: 34px;
-  margin-left: auto;
-}
-
 .mail-brand strong,
 .mail-nav-item strong,
 .mail-message-row strong,
@@ -214,6 +211,7 @@
 .mail-list-toolbar button,
 .mail-nav-item,
 .mail-compose-nav-action,
+.mail-toolbar-compose,
 .mail-attachment,
 .mail-compose button,
 .mail-access-state button,
@@ -229,6 +227,7 @@
 .mail-icon-row button,
 .mail-list-toolbar button,
 .mail-compose-nav-action,
+.mail-toolbar-compose,
 .mail-remote-image-banner button {
   display: inline-flex;
   align-items: center;
@@ -260,6 +259,10 @@
   min-height: 2.65rem;
   justify-content: flex-start;
   font-weight: 850;
+}
+
+.mail-toolbar-compose {
+  display: none !important;
 }
 
 .mail-sidebar-section {
@@ -962,6 +965,10 @@ select:focus-visible,
     display: none;
   }
 
+  .mail-page:not(.nav-collapsed) .mail-rail-compose {
+    display: inline-grid;
+  }
+
   .mail-page.has-reader {
     grid-template-areas:
       "rail list"
@@ -992,6 +999,7 @@ select:focus-visible,
   }
 
   .mail-shell-sidebar.mobile-active,
+  .mail-page.nav-collapsed .mail-shell-sidebar.mobile-active,
   .mail-shell-list.mobile-active,
   .mail-shell-viewer.mobile-active {
     display: flex;
@@ -1016,13 +1024,19 @@ select:focus-visible,
 
   .mail-search,
   .mail-filter-group,
+  .mail-toolbar-compose,
   .mail-list-toolbar .mail-primary-action {
     grid-column: 1 / -1;
   }
 
   .mail-filter-group,
+  .mail-toolbar-compose,
   .mail-list-toolbar .mail-primary-action {
     width: 100%;
+  }
+
+  .mail-toolbar-compose {
+    display: inline-flex !important;
   }
 
   .mail-filter-toggle {
@@ -1068,8 +1082,10 @@ select:focus-visible,
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .mail-page,
   .mail-shell-viewer,
   .mail-message-skeleton span {
     animation: none;
+    transition: none;
   }
 }

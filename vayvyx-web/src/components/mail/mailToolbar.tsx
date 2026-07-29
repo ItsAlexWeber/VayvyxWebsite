@@ -1,13 +1,15 @@
-import { MailOpen, MoreHorizontal, RefreshCcw, Search, Star } from "lucide-react";
+import { Edit3, MailOpen, MoreHorizontal, RefreshCcw, Search, Star } from "lucide-react";
 
 type Props = {
   title: string;
   search: string;
   unreadOnly: boolean;
   flaggedOnly: boolean;
+  canCompose?: boolean;
   onSearch: (value: string) => void;
   onUnreadOnly: (value: boolean) => void;
   onFlaggedOnly: (value: boolean) => void;
+  onCompose?: () => void;
   onRefresh: () => void;
 };
 
@@ -16,9 +18,11 @@ export function MailToolbar({
   search,
   unreadOnly,
   flaggedOnly,
+  canCompose = false,
   onSearch,
   onUnreadOnly,
   onFlaggedOnly,
+  onCompose,
   onRefresh,
 }: Props) {
   return (
@@ -58,6 +62,18 @@ export function MailToolbar({
           <span>Flagged</span>
         </button>
       </div>
+      {canCompose && onCompose && (
+        <button
+          className="mail-toolbar-compose"
+          type="button"
+          onClick={onCompose}
+          aria-label="Compose new email"
+          title="New email"
+        >
+          <Edit3 size={17} />
+          <span>Compose</span>
+        </button>
+      )}
       <button type="button" onClick={onRefresh} aria-label="Refresh" title="Refresh">
         <RefreshCcw size={17} />
       </button>

@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/set-state-in-effect */
-import { ArrowLeft, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NavigateWithTransition } from "../app.tsx";
 import { MailAccountSwitcher } from "../components/mail/mailAccountSwitcher.tsx";
@@ -8,6 +8,10 @@ import { MailFolderSidebar } from "../components/mail/mailFolderSidebar.tsx";
 import { MailMessageList } from "../components/mail/mailMessageList.tsx";
 import { MailMessageViewer } from "../components/mail/mailMessageViewer.tsx";
 import { MailNavigationRail } from "../components/mail/mailNavigationRail.tsx";
+import {
+  readMailNavigationCollapsedPreference,
+  writeMailNavigationCollapsedPreference,
+} from "../components/mail/mailNavigationPreference.ts";
 import { MailToolbar } from "../components/mail/mailToolbar.tsx";
 import { canUseRole } from "../components/mail/mailUtils.ts";
 import { mailApi, MailApiRequestError, setMailApiAuthRequiredHandler } from "../lib/mailApi.ts";
@@ -49,7 +53,9 @@ export function MailPage({ onNavigate }: Props) {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [unifiedFailures, setUnifiedFailures] = useState<UnifiedMailboxFailure[]>([]);
   const [panel, setPanel] = useState<Panel>("sidebar");
-  const [navigationCollapsed, setNavigationCollapsed] = useState(false);
+  const [isMailNavigationCollapsed, setIsMailNavigationCollapsed] = useState(
+    readMailNavigationCollapsedPreference
+  );
   const listAbortRef = useRef<AbortController | null>(null);
   const detailAbortRef = useRef<AbortController | null>(null);
 
@@ -226,6 +232,16 @@ export function MailPage({ onNavigate }: Props) {
     return result;
   }
 
+  const openCompose = useCallback(() => setComposeMode("compose"), []);
+
+  const toggleMailNavigation = useCallback(() => {
+    setIsMailNavigationCollapsed((current) => {
+      const next = !current;
+      writeMailNavigationCollapsedPreference(next);
+      return next;
+    });
+  }, []);
+
   async function downloadAttachment(attachmentId: string) {
     if (!detail) return;
     setDownloadingId(attachmentId);
@@ -242,6 +258,7 @@ export function MailPage({ onNavigate }: Props) {
     ? "Unified Inbox"
     : folders.find((folder) => folder.path === selectedFolder)?.displayName ?? selectedAccount?.displayName ?? "Mailbox";
   const canManage = accounts.some((account) => account.currentUserRole === "admin");
+  const canCompose = canUseRole(selectedAccount, "sender");
   const readerOpen = selectedMessage !== null;
 
   if (loadingAccounts) {
@@ -262,31 +279,29 @@ export function MailPage({ onNavigate }: Props) {
 
   return (
     <main
-      className={`mail-page ${readerOpen ? "has-reader" : "no-reader"} ${navigationCollapsed ? "nav-collapsed" : ""}`}
+      className={`mail-page ${readerOpen ? "has-reader" : "no-reader"} ${isMailNavigationCollapsed ? "nav-collapsed" : ""}`}
       data-reader-state={readerOpen ? "open" : "closed"}
     >
       <MailNavigationRail
         canManage={canManage}
+        canCompose={canCompose}
+        isMailNavigationCollapsed={isMailNavigationCollapsed}
+        onCompose={openCompose}
+        onToggleMailNavigation={toggleMailNavigation}
         onHome={() => onNavigate("/")}
         onAccount={() => onNavigate("/account")}
         onSettings={() => onNavigate("/admin/mail/settings")}
       />
-      <aside className={`mail-shell-sidebar ${panel === "sidebar" ? "mobile-active" : ""}`}>
+      <aside
+        id="mail-navigation-pane"
+        className={`mail-shell-sidebar ${panel === "sidebar" ? "mobile-active" : ""}`}
+      >
         <header className="mail-brand">
           <img src="/vayvyx-logo.png" alt="" />
           <div>
             <strong>Vayvyx Mail</strong>
             <small>Company workspace</small>
           </div>
-          <button
-            className="mail-pane-collapse"
-            type="button"
-            onClick={() => setNavigationCollapsed((value) => !value)}
-            aria-label={navigationCollapsed ? "Expand mail navigation" : "Collapse mail navigation"}
-            title={navigationCollapsed ? "Expand mail navigation" : "Collapse mail navigation"}
-          >
-            {navigationCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-          </button>
         </header>
         <MailAccountSwitcher
           accounts={accounts}
@@ -294,8 +309,8 @@ export function MailPage({ onNavigate }: Props) {
           isUnified={isUnified}
           onSelectUnified={selectUnified}
           onSelectAccount={selectAccount}
-          canCompose={canUseRole(selectedAccount, "sender")}
-          onCompose={() => setComposeMode("compose")}
+          canCompose={canCompose}
+          onCompose={openCompose}
         />
         {!isUnified && (
           <MailFolderSidebar
@@ -323,6 +338,8 @@ export function MailPage({ onNavigate }: Props) {
           onSearch={setSearch}
           onUnreadOnly={setUnreadOnly}
           onFlaggedOnly={setFlaggedOnly}
+          canCompose={canCompose}
+          onCompose={openCompose}
           onRefresh={loadMessages}
         />
         {unifiedFailures.length > 0 && (
