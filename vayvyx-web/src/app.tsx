@@ -4,6 +4,8 @@ import { HexTransition } from "./components/hexTransition.tsx";
 import { InteractiveBackground } from "./components/interactiveBackground.tsx";
 import { HomePage } from "./pages/homePage.tsx";
 import { LoginPage } from "./pages/loginPage.tsx";
+import { ForgotPasswordPage } from "./pages/forgotPasswordPage.tsx";
+import { ResetPasswordPage } from "./pages/resetPasswordPage.tsx";
 import { RequestDemoPage } from "./pages/requestDemoPage.tsx";
 import { AccountPage } from "./pages/accountPage.tsx";
 import { MailPage } from "./pages/mailPage.tsx";
@@ -71,6 +73,16 @@ export default function App() {
           <Route
             path="/login"
             element={<LoginPage onNavigate={navigateWithTransition} />}
+          />
+
+          <Route
+            path="/forgot-password"
+            element={<ForgotPasswordPage onNavigate={navigateWithTransition} />}
+          />
+
+          <Route
+            path="/reset-password"
+            element={<ResetPasswordPage onNavigate={navigateWithTransition} />}
           />
 
           <Route

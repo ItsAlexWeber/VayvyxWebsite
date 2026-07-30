@@ -1,5 +1,9 @@
 import { useState, type FormEvent } from "react";
 import type { NavigateWithTransition } from "../app.tsx";
+import {
+  normalizeAuthEmail,
+  passwordMinimumLength,
+} from "../lib/authValidation.ts";
 import { supabase } from "../lib/supabaseClient.ts";
 import "../styles/accessPages.css";
 
@@ -32,7 +36,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeAuthEmail(email);
 
     if (!normalizedEmail || !password) {
       setStatusMessage({
@@ -43,7 +47,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
       return;
     }
 
-    if (password.length < 8) {
+    if (password.length < passwordMinimumLength) {
       setStatusMessage({
         type: "error",
         text: "Your password must contain at least eight characters.",
@@ -284,6 +288,19 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                 <small>Use at least eight characters.</small>
               )}
             </label>
+
+            {mode === "login" && (
+              <a
+                className="access-inline-link"
+                href="/forgot-password"
+                onClick={(event) => {
+                  event.preventDefault();
+                  onNavigate("/forgot-password");
+                }}
+              >
+                Forgot password?
+              </a>
+            )}
 
             {statusMessage && (
               <div

@@ -1,5 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { PasswordField } from "../components/passwordField.tsx";
 import type { NavigateWithTransition } from "../app.tsx";
+import {
+  getPasswordPolicyHint,
+  validateNewPasswordPair,
+} from "../lib/authValidation.ts";
 import { mailApi, MailApiRequestError } from "../lib/mailApi.ts";
 import { supabase } from "../lib/supabaseClient.ts";
 
@@ -58,6 +63,14 @@ function formatStatus(status: string | undefined) {
 
 export function AccountPage({ onNavigate }: AccountPageProps) {
   const [downloadMessage, setDownloadMessage] = useState("");
+  const [securityMessage, setSecurityMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [securityNewPassword, setSecurityNewPassword] = useState("");
+  const [securityConfirmPassword, setSecurityConfirmPassword] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const passwordChangeInFlightRef = useRef(false);
   const [mailActions, setMailActions] = useState({
     canOpenMail: false,
     canManageMail: false,
@@ -156,6 +169,64 @@ export function AccountPage({ onNavigate }: AccountPageProps) {
     setDownloadMessage(
       "Download coming soon. Your account is ready, but the Vayvyx desktop installer has not been published yet."
     );
+  }
+
+  async function handlePasswordChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (isChangingPassword || passwordChangeInFlightRef.current) {
+      return;
+    }
+
+    if (accountState.status !== "signed-in") {
+      setSecurityMessage({
+        type: "error",
+        text: "Sign in before changing your password.",
+      });
+      return;
+    }
+
+    const validationMessage = validateNewPasswordPair(
+      securityNewPassword,
+      securityConfirmPassword,
+    );
+
+    if (validationMessage) {
+      setSecurityMessage({
+        type: "error",
+        text: validationMessage,
+      });
+      return;
+    }
+
+    setIsChangingPassword(true);
+    passwordChangeInFlightRef.current = true;
+    setSecurityMessage(null);
+
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: securityNewPassword,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setSecurityNewPassword("");
+      setSecurityConfirmPassword("");
+      setSecurityMessage({
+        type: "success",
+        text: "Your password was updated.",
+      });
+    } catch {
+      setSecurityMessage({
+        type: "error",
+        text: "Password change is temporarily unavailable. Try again shortly.",
+      });
+    } finally {
+      passwordChangeInFlightRef.current = false;
+      setIsChangingPassword(false);
+    }
   }
 
   const license = accountState.license;
@@ -298,6 +369,63 @@ export function AccountPage({ onNavigate }: AccountPageProps) {
                 Log out
               </button>
             </div>
+
+            <section
+              className="account-section account-security-section"
+              aria-labelledby="account-security-heading"
+            >
+              <div>
+                <span className="account-label">Security</span>
+                <h2 id="account-security-heading">Change password</h2>
+                <p className="account-muted">
+                  Update the password used to sign in to your Vayvyx account.
+                </p>
+              </div>
+
+              <form
+                className="account-security-form"
+                onSubmit={handlePasswordChange}
+                aria-describedby="account-security-status"
+              >
+                <PasswordField
+                  id="account-new-password"
+                  label="New password"
+                  value={securityNewPassword}
+                  onChange={setSecurityNewPassword}
+                  disabled={isChangingPassword}
+                  helpText={getPasswordPolicyHint()}
+                  fieldClassName="account-security-field"
+                />
+
+                <PasswordField
+                  id="account-confirm-password"
+                  label="Confirm new password"
+                  value={securityConfirmPassword}
+                  onChange={setSecurityConfirmPassword}
+                  disabled={isChangingPassword}
+                  fieldClassName="account-security-field"
+                />
+
+                {securityMessage && (
+                  <div
+                    id="account-security-status"
+                    className={`account-security-message account-security-message-${securityMessage.type}`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {securityMessage.text}
+                  </div>
+                )}
+
+                <button
+                  className="account-primary-button"
+                  type="submit"
+                  disabled={isChangingPassword}
+                >
+                  {isChangingPassword ? "Updating..." : "Update password"}
+                </button>
+              </form>
+            </section>
           </div>
         )}
       </section>

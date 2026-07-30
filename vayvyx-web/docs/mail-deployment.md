@@ -39,6 +39,26 @@ where table_schema = 'public'
 
 Only service/admin roles should have access.
 
+## Supabase Auth URL Configuration
+
+Password recovery uses Supabase Auth's built-in recovery links. Configure the
+Supabase dashboard under Authentication > URL Configuration with:
+
+- Site URL: `https://vayvyx.com`
+- Allowed redirect URL: `https://vayvyx.com/reset-password`
+- Allowed redirect URL: `https://www.vayvyx.com/reset-password`
+
+For local recovery testing, add the Vite development redirect only while it is
+needed:
+
+- Allowed redirect URL: `http://localhost:5173/reset-password`
+
+The Supabase Auth "Reset password" email template may be customized in the
+Supabase dashboard, but it must keep Supabase's confirmation or recovery URL
+variable intact so the hosted Auth service can generate a valid recovery link.
+Do not add service-role keys, access tokens, recovery URLs, or mailbox
+credentials to repository files or documentation.
+
 ## Supabase Data API Readiness
 
 The following objects must be available to the backend through Supabase APIs while RLS and grants remain restrictive:

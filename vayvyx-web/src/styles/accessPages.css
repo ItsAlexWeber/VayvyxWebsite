@@ -410,6 +410,31 @@
   line-height: 1.35;
 }
 
+.access-inline-link {
+  width: fit-content;
+  border-radius: 999px;
+  color: #77ffe4;
+  font-size: 0.78rem;
+  font-weight: 760;
+  text-decoration: none;
+  transition:
+    color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.access-inline-link:hover {
+  color: #a2ffed;
+}
+
+.access-inline-link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(112, 215, 255, 0.22);
+}
+
+.access-recovery-actions {
+  margin-top: 1rem;
+}
+
 .access-message {
   padding: 0.65rem 0.8rem;
   border: 1px solid;

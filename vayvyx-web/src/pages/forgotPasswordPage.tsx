@@ -1,0 +1,263 @@
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import type { NavigateWithTransition } from "../app.tsx";
+import {
+  normalizeAuthEmail,
+  resemblesEmailAddress,
+} from "../lib/authValidation.ts";
+import { supabase } from "../lib/supabaseClient.ts";
+import "../styles/accessPages.css";
+
+type ForgotPasswordPageProps = {
+  onNavigate: NavigateWithTransition;
+};
+
+type StatusMessage = {
+  type: "success" | "error";
+  text: string;
+};
+
+const resendCooldownMs = 30_000;
+const genericCompletionMessage =
+  "If an account exists for that email address, a password reset link has been sent.";
+const serviceFailureMessage =
+  "Password reset is temporarily unavailable. Try again shortly.";
+
+export function ForgotPasswordPage({ onNavigate }: ForgotPasswordPageProps) {
+  const [email, setEmail] = useState("");
+  const [statusMessage, setStatusMessage] = useState<StatusMessage | null>(
+    null,
+  );
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cooldownEndsAt, setCooldownEndsAt] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const submissionInFlightRef = useRef(false);
+
+  const cooldownSeconds = useMemo(() => {
+    return Math.max(0, Math.ceil((cooldownEndsAt - now) / 1000));
+  }, [cooldownEndsAt, now]);
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1_000);
+
+    return () => window.clearInterval(timer);
+  }, [cooldownSeconds]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (submissionInFlightRef.current || cooldownSeconds > 0) {
+      return;
+    }
+
+    const normalizedEmail = normalizeAuthEmail(email);
+
+    if (!resemblesEmailAddress(normalizedEmail)) {
+      setStatusMessage({
+        type: "error",
+        text: "Enter a valid email address.",
+      });
+
+      return;
+    }
+
+    setIsSubmitting(true);
+    submissionInFlightRef.current = true;
+    setStatusMessage(null);
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(
+        normalizedEmail,
+        {
+          redirectTo: `${window.location.origin}/reset-password`,
+        },
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      setStatusMessage({
+        type: "success",
+        text: genericCompletionMessage,
+      });
+      setCooldownEndsAt(Date.now() + resendCooldownMs);
+      setNow(Date.now());
+    } catch {
+      setStatusMessage({
+        type: "error",
+        text: serviceFailureMessage,
+      });
+    } finally {
+      submissionInFlightRef.current = false;
+      setIsSubmitting(false);
+    }
+  }
+
+  const isSubmitDisabled = isSubmitting || cooldownSeconds > 0;
+
+  return (
+    <main className="access-page">
+      <button
+        className="access-back-button"
+        type="button"
+        onClick={() => onNavigate("/login")}
+      >
+        <span aria-hidden="true">{"<-"}</span>
+        Back to sign in
+      </button>
+
+      <div className="access-layout">
+        <section className="access-information-panel">
+          <div className="access-brand">
+            <div className="access-brand-logo">
+              <img src="/vayvyx-logo.png" alt="" />
+            </div>
+
+            <span>Vayvyx</span>
+          </div>
+
+          <div className="access-information-content">
+            <p className="access-eyebrow">Account recovery</p>
+
+            <h1>Recover your Vayvyx access.</h1>
+
+            <p className="access-description">
+              Request a secure Supabase recovery link for the email address
+              associated with your Vayvyx account.
+            </p>
+
+            <div className="access-feature-list">
+              <div className="access-feature">
+                <span className="access-feature-icon">01</span>
+
+                <div>
+                  <strong>Private response</strong>
+                  <p>
+                    The confirmation message stays the same whether or not an
+                    account exists for the email address.
+                  </p>
+                </div>
+              </div>
+
+              <div className="access-feature">
+                <span className="access-feature-icon">02</span>
+
+                <div>
+                  <strong>Supabase recovery</strong>
+                  <p>
+                    Password reset links are issued by Supabase Auth. Vayvyx
+                    does not create or store custom reset tokens.
+                  </p>
+                </div>
+              </div>
+
+              <div className="access-feature">
+                <span className="access-feature-icon">03</span>
+
+                <div>
+                  <strong>Protected workspace</strong>
+                  <p>
+                    Recovery access is limited to changing the password and
+                    does not expose account or mailbox data.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="access-panel-footer">
+            <span>Secure recovery</span>
+            <span>Private beta</span>
+          </div>
+        </section>
+
+        <section className="access-form-panel">
+          <div className="access-form-header">
+            <div className="access-mobile-logo">
+              <img src="/vayvyx-logo.png" alt="Vayvyx logo" />
+            </div>
+
+            <p className="access-eyebrow">Forgot password?</p>
+
+            <h2>Send a reset link</h2>
+
+            <p>
+              Enter your account email. If it is registered, Supabase will send
+              a password-reset link.
+            </p>
+          </div>
+
+          <form
+            className="access-form"
+            onSubmit={handleSubmit}
+            aria-describedby="forgot-password-status"
+          >
+            <label className="access-field">
+              <span>Email address</span>
+
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="name@company.com"
+                autoComplete="email"
+                disabled={isSubmitting}
+              />
+            </label>
+
+            {statusMessage && (
+              <div
+                id="forgot-password-status"
+                className={`access-message access-message-${statusMessage.type}`}
+                role="status"
+                aria-live="polite"
+              >
+                {statusMessage.text}
+              </div>
+            )}
+
+            <button
+              className="access-primary-button"
+              type="submit"
+              disabled={isSubmitDisabled}
+            >
+              {isSubmitting
+                ? "Sending..."
+                : cooldownSeconds > 0
+                  ? `Send again in ${cooldownSeconds}s`
+                  : "Send reset link"}
+            </button>
+          </form>
+
+          <div className="access-form-divider">
+            <span>Remembered it?</span>
+          </div>
+
+          <button
+            className="access-secondary-button"
+            type="button"
+            onClick={() => onNavigate("/login")}
+          >
+            Back to sign in
+          </button>
+
+          <p className="access-security-note">
+            Never share password-reset emails or recovery links with another
+            person.
+          </p>
+        </section>
+      </div>
+
+      <footer className="access-page-footer">
+        <span>&copy; 2026 Vayvyx</span>
+        <span>Password recovery</span>
+      </footer>
+    </main>
+  );
+}

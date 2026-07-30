@@ -726,6 +726,52 @@ textarea {
   resize: vertical;
 }
 
+.password-input-shell {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-shell input {
+  padding-right: 3.05rem;
+}
+
+.password-visibility-button {
+  position: absolute;
+  top: 50%;
+  right: 0.38rem;
+  display: inline-grid;
+  width: 2.15rem;
+  height: 2.15rem;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: rgba(248, 251, 255, 0.72);
+  background: rgba(255, 255, 255, 0.055);
+  transform: translateY(-50%);
+  transition:
+    border-color 180ms ease,
+    color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.password-visibility-button:hover:not(:disabled) {
+  border-color: rgba(112, 215, 255, 0.32);
+  color: #f8fbff;
+  background: rgba(112, 215, 255, 0.08);
+}
+
+.password-visibility-button:focus-visible,
+.access-back-button:focus-visible,
+.access-primary-button:focus-visible,
+.access-secondary-button:focus-visible,
+.account-primary-button:focus-visible,
+.account-secondary-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(112, 215, 255, 0.22);
+}
+
 .glass-card button {
   min-height: 3rem;
 }
@@ -840,6 +886,7 @@ textarea {
 .account-card {
   width: min(100%, 42rem);
   max-height: calc(100svh - 7rem);
+  overflow-y: auto;
   padding: clamp(1.15rem, 2vw, 1.6rem);
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 1.65rem;
@@ -960,6 +1007,66 @@ textarea {
   display: flex;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+.account-security-section {
+  gap: 0.85rem;
+}
+
+.account-security-section h2 {
+  margin: 0.2rem 0 0;
+  color: #f8fbff;
+  font-size: 1.35rem;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.account-security-section .account-muted {
+  margin: 0.45rem 0 0;
+  font-size: 0.82rem;
+}
+
+.account-security-form {
+  display: grid;
+  gap: 0.72rem;
+  margin-top: 0;
+}
+
+.account-security-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.account-security-field > span {
+  color: rgba(248, 251, 255, 0.82);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.account-security-field small {
+  color: rgba(248, 251, 255, 0.44);
+  font-size: 0.66rem;
+  line-height: 1.35;
+}
+
+.account-security-message {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid;
+  border-radius: 0.8rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.account-security-message-success {
+  border-color: rgba(119, 255, 228, 0.28);
+  color: #a2ffed;
+  background: rgba(119, 255, 228, 0.075);
+}
+
+.account-security-message-error {
+  border-color: rgba(255, 142, 157, 0.3);
+  color: #ffb2bd;
+  background: rgba(255, 101, 122, 0.075);
 }
 
 .account-primary-button,
