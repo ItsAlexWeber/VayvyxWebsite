@@ -10,7 +10,7 @@ export type TemplatePermissionContext = {
 
 export type TemplatePermissionRow = {
   scope: MailTemplateScope;
-  created_by: string;
+  created_by: string | null;
   default_mail_account_id: string | null;
   is_active: boolean;
 };
@@ -30,7 +30,8 @@ export function canEditTemplate(
   context: TemplatePermissionContext,
   row: TemplatePermissionRow
 ) {
-  if (!row.is_active || row.scope === "system") return false;
+  if (!row.is_active) return false;
+  if (row.scope === "system") return context.platformRole === "admin";
   if (row.created_by === context.userId || context.platformRole === "admin") return true;
   if (row.scope !== "company") return false;
   return hasTemplateMailboxRole(context.mailboxRole, "manager");

@@ -9,13 +9,18 @@ export type MailTemplateRow = {
   html_content: string;
   plain_text_content: string | null;
   scope: MailTemplateScope;
-  created_by: string;
+  created_by: string | null;
   updated_by: string | null;
   default_mail_account_id: string | null;
   preview_metadata: Record<string, unknown> | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  system_key: string | null;
+  is_delete_protected: boolean;
+  default_subject_template: string | null;
+  default_html_content: string | null;
+  default_plain_text_content: string | null;
 };
 
 export type MailTemplateAssetRow = {
@@ -47,10 +52,12 @@ export type MailTemplateSummary = {
   scope: MailTemplateScope;
   defaultMailAccountId: string | null;
   previewMetadata: Record<string, unknown> | null;
-  createdBy: string;
+  createdBy: string | null;
   updatedAt: string;
   createdAt: string;
   isActive: boolean;
+  systemKey: string | null;
+  isDeleteProtected: boolean;
 };
 
 export type MailTemplateDetail = MailTemplateSummary & {
@@ -58,6 +65,9 @@ export type MailTemplateDetail = MailTemplateSummary & {
   plainTextContent: string | null;
   variables: string[];
   assets: MailTemplateAssetSummary[];
+  defaultSubjectTemplate: string | null;
+  defaultHtmlContent: string | null;
+  defaultPlainTextContent: string | null;
 };
 
 export type MailTemplateRendered = {

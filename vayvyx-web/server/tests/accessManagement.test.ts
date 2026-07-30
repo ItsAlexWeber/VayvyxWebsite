@@ -19,7 +19,7 @@ describe("access management", () => {
       request.auth = userAuth as never;
       next();
     });
-    app.use(createAccessAdminRoutes(new AccessManagementService(createFakeAdmin().admin)));
+    app.use(createAccessAdminRoutes(createService(createFakeAdmin())));
     app.use(errorHandler);
 
     await request(app).get("/api/access/people").expect(403);
@@ -38,7 +38,7 @@ describe("access management", () => {
         profile("admin-user", "admin@vayvyx.com", "Avery Admin", "admin"),
       ],
     });
-    const service = new AccessManagementService(fake.admin);
+    const service = createService(fake);
 
     const people = await service.listPeople(adminAuth, {
       search: "josh",
@@ -58,7 +58,7 @@ describe("access management", () => {
     const fake = createFakeAdmin({
       accounts: [mailAccount("mailbox-1")],
     });
-    const service = new AccessManagementService(fake.admin);
+    const service = createService(fake);
 
     const result = await service.invitePerson(
       adminAuth,
@@ -78,10 +78,16 @@ describe("access management", () => {
     );
 
     expect(result.result).toBe("invited");
-    expect(fake.invites[0]).toMatchObject({
+    expect(fake.generatedLinks[0]).toMatchObject({
+      type: "invite",
       email: "new@vayvyx.com",
       redirectTo: "https://vayvyx.com/accept-invite",
     });
+    expect(fake.authEmails[0]).toMatchObject({
+      type: "welcome",
+      to: "new@vayvyx.com",
+    });
+    expect(fake.admin.auth.admin.inviteUserByEmail).not.toHaveBeenCalled();
     expect(fake.profiles.find((item) => item.email === "new@vayvyx.com")?.account_status).toBe("invited");
     expect(fake.members).toHaveLength(1);
     expect(fake.audit.map((event) => event.action)).toContain("person_invited");
@@ -100,7 +106,7 @@ describe("access management", () => {
         },
       ],
     });
-    const service = new AccessManagementService(fake.admin);
+    const service = createService(fake);
 
     const result = await service.invitePerson(
       adminAuth,
@@ -116,8 +122,9 @@ describe("access management", () => {
       "https://vayvyx.com/accept-invite",
     );
 
-    expect(result.result).toBe("invitation_already_pending");
-    expect(fake.invites).toHaveLength(0);
+    expect(result.result).toBe("invited");
+    expect(fake.generatedLinks).toHaveLength(1);
+    expect(fake.profiles.filter((item) => item.email === "pending@vayvyx.com")).toHaveLength(1);
   });
 
   it("completes invitation setup without exposing tokens", async () => {
@@ -130,13 +137,15 @@ describe("access management", () => {
         },
       ],
     });
-    const service = new AccessManagementService(fake.admin);
+    const service = createService(fake);
 
     await service.completeInvite(
       {
         ...auth("invite-user", "user"),
         email: "invite@vayvyx.com",
         accountStatus: "invited",
+        mustSetPassword: true,
+        setupCompletedAt: null,
       },
       "Invited Person",
     );
@@ -152,7 +161,7 @@ describe("access management", () => {
       users: [authUser("target-user", "target@vayvyx.com")],
       profiles: [profile("target-user", "target@vayvyx.com", "Target", "user")],
     });
-    const service = new AccessManagementService(fake.admin);
+    const service = createService(fake);
 
     await service.sendPasswordReset(
       adminAuth,
@@ -160,12 +169,17 @@ describe("access management", () => {
       "https://vayvyx.com/reset-password",
     );
 
-    expect(fake.resets).toEqual([
+    expect(fake.generatedLinks).toEqual([
       {
+        type: "recovery",
         email: "target@vayvyx.com",
         redirectTo: "https://vayvyx.com/reset-password",
       },
     ]);
+    expect(fake.authEmails).toContainEqual(
+      expect.objectContaining({ type: "password_reset", to: "target@vayvyx.com" }),
+    );
+    expect(fake.admin.auth.resetPasswordForEmail).not.toHaveBeenCalled();
   });
 
   it("updates roles, access type, and expiration with confirmation for admin demotion", async () => {
@@ -179,7 +193,7 @@ describe("access management", () => {
         authUser("second-admin", "second@vayvyx.com", { email_confirmed_at: "2026-07-01T00:00:00.000Z" }),
       ],
     });
-    const service = new AccessManagementService(fake.admin);
+    const service = createService(fake);
 
     await expect(
       service.updatePerson(adminAuth, "second-admin", { platformRole: "user" })
@@ -208,7 +222,7 @@ describe("access management", () => {
         profile("target-user", "target@vayvyx.com", "Target", "user"),
       ],
     });
-    const service = new AccessManagementService(fake.admin);
+    const service = createService(fake);
 
     await expect(
       service.updatePerson(adminAuth, "admin-user", {
@@ -236,7 +250,7 @@ describe("access management", () => {
         }),
       ],
     });
-    const service = new AccessManagementService(fake.admin);
+    const service = createService(fake);
 
     const repaired = await service.repairProfile(adminAuth, "josh-user");
 
@@ -252,7 +266,7 @@ describe("access management", () => {
       accounts: [mailAccount("mailbox-1")],
       members: [member("mailbox-1", "target-user", "owner")],
     });
-    const service = new AccessManagementService(fake.admin);
+    const service = createService(fake);
 
     await expect(
       service.addMailboxAssignment(adminAuth, "target-user", "mailbox-1", "viewer"),
@@ -293,6 +307,7 @@ function auth(userId: string, platformRole: PlatformRole): AuthContext {
     accessType: "beta",
     accountStatus: "active",
     setupCompletedAt: "2026-07-01T00:00:00.000Z",
+    mustSetPassword: false,
     accessExpiresAt: null,
   };
 }
@@ -331,6 +346,11 @@ function profile(
     disabled_at: null,
     disabled_by: null,
     admin_notes: null,
+    must_set_password: false,
+    invitation_sent_at: null,
+    setup_reminder_sent_at: null,
+    password_reset_requested_at: null,
+    last_auth_email_status: null,
     created_at: "2026-07-01T00:00:00.000Z",
     updated_at: "2026-07-01T00:00:00.000Z",
   };
@@ -373,15 +393,49 @@ function createFakeAdmin(seed: Partial<{
     accounts: [...(seed.accounts ?? [])],
     members: [...(seed.members ?? [])],
     audit: [] as Array<Record<string, unknown>>,
+    delivery: [] as Array<Record<string, unknown>>,
     invites: [] as Array<{ email: string; redirectTo?: string }>,
     resets: [] as Array<{ email: string; redirectTo?: string }>,
+    generatedLinks: [] as Array<{ type: "invite" | "recovery"; email: string; redirectTo?: string }>,
+    authEmails: [] as Array<{ type: string; to: string; actionUrl?: string | null }>,
     admin: null as never,
+    authEmailService: null as never,
   };
 
   fake.admin = {
     auth: {
       admin: {
         listUsers: vi.fn(async () => ({ data: { users: fake.users }, error: null })),
+        generateLink: vi.fn(async (input: {
+          type: "invite" | "recovery";
+          email: string;
+          options?: { redirectTo?: string; data?: Record<string, unknown> };
+        }) => {
+          let user = fake.users.find((item) => item.email === input.email);
+          if (!user && input.type === "invite") {
+            user = authUser(`user-${fake.users.length + 1}`, input.email, {
+              invited_at: "2026-07-01T00:00:00.000Z",
+            });
+            fake.users.push(user);
+          }
+          if (!user) {
+            return { data: null, error: new Error("missing") };
+          }
+          fake.generatedLinks.push({
+            type: input.type,
+            email: input.email,
+            redirectTo: input.options?.redirectTo,
+          });
+          return {
+            data: {
+              user,
+              properties: {
+                action_link: `https://project.supabase.co/auth/v1/verify?type=${input.type}&token_hash=secret&redirect_to=${encodeURIComponent(input.options?.redirectTo ?? "")}`,
+              },
+            },
+            error: null,
+          };
+        }),
         inviteUserByEmail: vi.fn(async (email: string, options: { redirectTo?: string }) => {
           const existing = fake.users.find((user) => user.email === email);
           if (existing) {
@@ -411,7 +465,49 @@ function createFakeAdmin(seed: Partial<{
     },
   } as never;
 
+  fake.authEmailService = {
+    generateInviteActionLink: vi.fn(async (input: {
+      email: string;
+      fullName: string;
+      redirectTo: string;
+    }) => {
+      const generated = await fake.admin.auth.admin.generateLink({
+        type: "invite",
+        email: input.email,
+        options: {
+          redirectTo: input.redirectTo,
+          data: { full_name: input.fullName },
+        },
+      });
+      return {
+        user: generated.data.user,
+        actionUrl: generated.data.properties.action_link,
+      };
+    }),
+    sendWelcomeInvitation: vi.fn(async (input: { to: string; actionUrl?: string | null }) => {
+      fake.authEmails.push({ type: "welcome", to: input.to, actionUrl: input.actionUrl });
+      return { ok: true, messageId: "message-welcome" };
+    }),
+    sendSetupReminder: vi.fn(async (input: { to: string; actionUrl?: string | null }) => {
+      fake.authEmails.push({ type: "setup_reminder", to: input.to, actionUrl: input.actionUrl });
+      return { ok: true, messageId: "message-reminder" };
+    }),
+    sendPasswordReset: vi.fn(async (input: { email: string; redirectTo: string }) => {
+      await fake.admin.auth.admin.generateLink({
+        type: "recovery",
+        email: input.email,
+        options: { redirectTo: input.redirectTo },
+      });
+      fake.authEmails.push({ type: "password_reset", to: input.email });
+      return { ok: true, messageId: "message-reset" };
+    }),
+  } as never;
+
   return fake;
+}
+
+function createService(fake: ReturnType<typeof createFakeAdmin>) {
+  return new AccessManagementService(fake.admin, fake.authEmailService);
 }
 
 class FakeQuery {
@@ -532,6 +628,7 @@ class FakeQuery {
     if (this.table === "mail_accounts") return this.fake.accounts as Array<Record<string, unknown>>;
     if (this.table === "mail_account_members") return this.fake.members as Array<Record<string, unknown>>;
     if (this.table === "access_audit_log") return this.fake.audit;
+    if (this.table === "auth_email_delivery_log") return this.fake.delivery;
     return [];
   }
 

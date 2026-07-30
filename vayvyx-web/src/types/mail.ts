@@ -16,6 +16,8 @@ export type MailApiErrorCode =
   | "USER_NOT_FOUND"
   | "PROFILE_NOT_FOUND"
   | "EMAIL_UNAVAILABLE"
+  | "AUTH_EMAIL_SEND_FAILED"
+  | "AUTH_EMAIL_SENDER_UNAVAILABLE"
   | "MAILBOX_NOT_FOUND"
   | "MAILBOX_INACTIVE"
   | "FOLDER_NOT_FOUND"
@@ -164,10 +166,12 @@ export type MailTemplateSummary = {
   scope: MailTemplateScope;
   defaultMailAccountId: string | null;
   previewMetadata: Record<string, unknown> | null;
-  createdBy: string;
+  createdBy: string | null;
   updatedAt: string;
   createdAt: string;
   isActive: boolean;
+  systemKey: string | null;
+  isDeleteProtected: boolean;
 };
 
 export type MailTemplateDetail = MailTemplateSummary & {
@@ -175,6 +179,9 @@ export type MailTemplateDetail = MailTemplateSummary & {
   plainTextContent: string | null;
   variables: string[];
   assets: MailTemplateAssetSummary[];
+  defaultSubjectTemplate: string | null;
+  defaultHtmlContent: string | null;
+  defaultPlainTextContent: string | null;
 };
 
 export type MailTemplateRendered = {

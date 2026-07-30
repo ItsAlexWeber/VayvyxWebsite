@@ -14,9 +14,10 @@ Mailbox passwords are encrypted only inside the Node backend with AES-256-GCM be
 
 1. Apply `supabase/migrations/202607280001_mail_foundation.sql`.
 2. Apply `supabase/migrations/202607300001_access_management.sql`.
-3. Confirm `public.profiles.role` exists and allows only `user` or `admin`.
-4. Confirm `public.profiles` has the access-management fields used by the backend: `full_name`, `email`, `access_type`, `account_status`, `setup_completed_at`, `access_expires_at`, `invited_by`, `disabled_at`, `disabled_by`, `admin_notes`, and `updated_at`.
-5. Manually promote Alexander's profile:
+3. Apply `supabase/migrations/202607300002_auth_emails.sql`.
+4. Confirm `public.profiles.role` exists and allows only `user` or `admin`.
+5. Confirm `public.profiles` has the access-management fields used by the backend: `full_name`, `email`, `access_type`, `account_status`, `setup_completed_at`, `must_set_password`, `access_expires_at`, `invited_by`, `disabled_at`, `disabled_by`, `admin_notes`, `invitation_sent_at`, `setup_reminder_sent_at`, `password_reset_requested_at`, `last_auth_email_status`, and `updated_at`.
+6. Manually promote Alexander's profile:
 
 ```sql
 update public.profiles
@@ -24,7 +25,7 @@ set role = 'admin'
 where id = '<alexander-auth-user-id>';
 ```
 
-6. Confirm authenticated users do not have direct access to encrypted credential columns:
+7. Confirm authenticated users do not have direct access to encrypted credential columns:
 
 ```sql
 select grantee, privilege_type
@@ -58,9 +59,12 @@ only while they are needed:
 - Allowed redirect URL: `http://localhost:5173/reset-password`
 - Allowed redirect URL: `http://localhost:5173/accept-invite`
 
-The Supabase Auth "Reset password" email template may be customized in the
-Supabase dashboard, but it must keep Supabase's confirmation or recovery URL
-variable intact so the hosted Auth service can generate a valid recovery link.
+Vayvyx sends custom branded invitation and recovery emails from the backend.
+Supabase Auth still generates the action links, but the backend uses
+`supabase.auth.admin.generateLink(...)` and sends the rendered email through the
+encrypted `support@vayvyx.com` mailbox. Do not use `inviteUserByEmail` or
+`resetPasswordForEmail` for backend-triggered Vayvyx auth emails because that
+can send duplicate Supabase messages.
 Do not add service-role keys, access tokens, recovery URLs, or mailbox
 credentials to repository files or documentation.
 
@@ -74,6 +78,7 @@ The following objects must be available to the backend through Supabase APIs whi
 - `public.mail_identities`: backend service client creates the default identity and validates selected identities; authenticated users may read identities only for permitted mailboxes.
 - `public.mail_audit_log`: backend service client writes audit entries; authenticated users may read only permitted non-sensitive audit rows.
 - `public.access_audit_log`: backend service client writes sanitized access-management events; authenticated browser users do not receive secret values, Auth responses, invitation links, recovery links, or tokens.
+- `public.auth_email_delivery_log`: backend service client writes sanitized authentication-email delivery metadata only. It must not store rendered action URLs, token hashes, OTPs, full HTML containing live links, SMTP passwords, or raw provider errors.
 
 In Supabase, check table API availability from the Table Editor/API settings for each public table. Do not enable browser access by broad grants. Confirm:
 
@@ -194,6 +199,7 @@ Implemented endpoints:
 - `PATCH /api/access/people/:userId`
 - `POST /api/access/people/:userId/reset-password`
 - `POST /api/access/people/:userId/resend-invite`
+- `POST /api/access/people/:userId/setup-reminder`
 - `POST /api/access/people/:userId/disable`
 - `POST /api/access/people/:userId/reactivate`
 - `POST /api/access/people/:userId/repair-profile`
@@ -203,9 +209,52 @@ Implemented endpoints:
 - `DELETE /api/access/people/:userId/mailboxes/:mailAccountId`
 - `GET /api/access/people/:userId/audit`
 
+Public and authenticated auth-email helper endpoints:
+
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/password-changed`
+
 The backend uses the server-only Supabase administration client for invitations, password-reset emails, profile repair, and access mutations. Browser code only sends the user's bearer token to the backend. It never imports the admin client and never receives service-role keys, Auth Admin responses, invitation links, recovery links, mailbox credentials, or encrypted credential values.
 
 Access-management audit records store sanitized action names and safe metadata only. Do not add passwords, tokens, invitation URLs, recovery URLs, Supabase Auth responses, service-role keys, mailbox passwords, or encrypted credential values to `public.access_audit_log`.
+
+## Authentication Emails
+
+Vayvyx-generated authentication emails are rendered and sent by the Node
+backend:
+
+- Welcome invitation: `auth_welcome_invite`
+- Password reset: `auth_password_reset`
+- Setup reminder: `auth_setup_reminder`
+- Password changed notification: `auth_password_changed`
+- Future signup confirmation reserve: `auth_confirm_signup`
+
+These are protected `system` mail templates. Platform admins can preview, edit,
+send nonfunctional test emails, and restore defaults in `/admin/access`.
+Protected system templates cannot be deleted.
+
+Production must have an active Vayvyx Mail account for:
+
+```txt
+support@vayvyx.com
+```
+
+The backend uses that mailbox's encrypted SMTP credentials and sends as:
+
+```txt
+Vayvyx Support <support@vayvyx.com>
+```
+
+Auth action links are generated only on the server through Supabase Auth Admin
+`generateLink`. The response properties `action_link`, `hashed_token`,
+`email_otp`, `verification_type`, and `redirect_to` are never returned to the
+browser, logged, stored in audit metadata, or stored in delivery logs.
+
+First-time invited users are stored with `must_set_password=true`,
+`setup_completed_at=null`, and `account_status` of `invited` or
+`setup_incomplete`. Protected backend APIs reject those sessions with
+`SETUP_INCOMPLETE` until `/accept-invite` completes password setup and the
+server clears `must_set_password`.
 
 `GET /api/mail/access` returns safe authorization metadata for route bootstrapping, including zero-mailbox platform-admin setup:
 
@@ -403,17 +452,18 @@ npm run build
 1. Verify database backup availability in Supabase.
 2. Apply `supabase/migrations/202607280001_mail_foundation.sql`.
 3. Apply `supabase/migrations/202607300001_access_management.sql`.
-4. Verify the Data API readiness checklist above.
-5. Verify RLS is enabled on mail and access-management tables.
-6. Verify encrypted credential columns are not granted to `anon` or `authenticated`.
-7. Add the required Supabase Auth redirect URLs:
+4. Apply `supabase/migrations/202607300002_auth_emails.sql`.
+5. Verify the Data API readiness checklist above.
+6. Verify RLS is enabled on mail, access-management, and auth-email delivery tables.
+7. Verify encrypted credential columns are not granted to `anon` or `authenticated`.
+8. Add the required Supabase Auth redirect URLs:
 
 - `https://vayvyx.com/reset-password`
 - `https://www.vayvyx.com/reset-password`
 - `https://vayvyx.com/accept-invite`
 - `https://www.vayvyx.com/accept-invite`
 
-8. Promote Alexander:
+9. Promote Alexander:
 
 ```sql
 update public.profiles
@@ -490,6 +540,10 @@ handle /api/mail/* {
 }
 
 handle /api/access/* {
+    reverse_proxy 127.0.0.1:4174
+}
+
+handle /api/auth/* {
     reverse_proxy 127.0.0.1:4174
 }
 ```

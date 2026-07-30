@@ -37,9 +37,14 @@ export type AccessPersonSummary = {
   accessType: AccessType;
   invitationStatus: InvitationStatus;
   setupCompletedAt: string | null;
+  mustSetPassword: boolean;
   accessExpiresAt: string | null;
   lastSignInAt: string | null;
   createdAt: string | null;
+  lastInvitationSentAt: string | null;
+  lastSetupReminderSentAt: string | null;
+  lastPasswordResetRequestedAt: string | null;
+  lastDeliveryResult: string | null;
   assignedMailboxes: AccessMailboxAssignment[];
   diagnostics: string[];
   profileMissing: boolean;
@@ -58,6 +63,19 @@ export type AccessAuditEvent = {
 export type AccessPersonDetail = AccessPersonSummary & {
   adminNotes: string | null;
   audit: AccessAuditEvent[];
+  emailDeliveries: AccessEmailDelivery[];
+};
+
+export type AccessEmailDelivery = {
+  id: string;
+  emailType: string;
+  status: "sent" | "failed";
+  providerMessageId: string | null;
+  sentAt: string | null;
+  failureCategory: string | null;
+  actorUserId: string | null;
+  correlationId: string;
+  createdAt: string;
 };
 
 export type AccessMailboxOption = {

@@ -270,6 +270,20 @@ export const mailApi = {
     });
   },
 
+  restoreTemplateDefault(templateId: string) {
+    return requestJson<MailTemplateDetail>(
+      `/api/mail/templates/${templateId}/restore-default`,
+      { method: "POST", body: JSON.stringify({}) }
+    );
+  },
+
+  sendAuthTemplateTest(templateId: string, to: string) {
+    return requestJson<SendMessageResult>(
+      `/api/mail/templates/${templateId}/auth-test-send`,
+      { method: "POST", body: JSON.stringify({ to }) }
+    );
+  },
+
   importTemplate(input: {
     name: string;
     description?: string | null;

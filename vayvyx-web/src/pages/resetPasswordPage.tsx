@@ -14,6 +14,7 @@ import {
   getPasswordPolicyHint,
   validateNewPasswordPair,
 } from "../lib/authValidation.ts";
+import { authEmailApi } from "../lib/authEmailApi.ts";
 import { supabase } from "../lib/supabaseClient.ts";
 import "../styles/accessPages.css";
 
@@ -189,6 +190,8 @@ export function ResetPasswordPage({ onNavigate }: ResetPasswordPageProps) {
       });
       setNewPassword("");
       setConfirmPassword("");
+
+      await authEmailApi.notifyPasswordChanged();
 
       try {
         await supabase.auth.signOut();

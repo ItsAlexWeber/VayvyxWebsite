@@ -13,6 +13,7 @@ import type {
   updatePersonSchema,
 } from "./accessValidation.js";
 import type { z } from "zod";
+import type { AuthEmailService } from "./authEmailService.js";
 
 type PeopleListQuery = z.infer<typeof peopleListQuerySchema>;
 type InvitePersonInput = z.infer<typeof invitePersonSchema>;
@@ -31,6 +32,11 @@ type ProfileRow = {
   disabled_at: string | null;
   disabled_by: string | null;
   admin_notes: string | null;
+  must_set_password: boolean;
+  invitation_sent_at: string | null;
+  setup_reminder_sent_at: string | null;
+  password_reset_requested_at: string | null;
+  last_auth_email_status: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -60,9 +66,14 @@ export type AccessPersonSummary = {
   accessType: AccessType;
   invitationStatus: "not_invited" | "invited" | "setup_incomplete" | "complete";
   setupCompletedAt: string | null;
+  mustSetPassword: boolean;
   accessExpiresAt: string | null;
   lastSignInAt: string | null;
   createdAt: string | null;
+  lastInvitationSentAt: string | null;
+  lastSetupReminderSentAt: string | null;
+  lastPasswordResetRequestedAt: string | null;
+  lastDeliveryResult: string | null;
   assignedMailboxes: AccessMailboxAssignment[];
   diagnostics: string[];
   profileMissing: boolean;
@@ -72,6 +83,7 @@ export type AccessPersonSummary = {
 export type AccessPersonDetail = AccessPersonSummary & {
   adminNotes: string | null;
   audit: AccessAuditEvent[];
+  emailDeliveries: AccessEmailDelivery[];
 };
 
 export type AccessMailboxAssignment = {
@@ -89,6 +101,18 @@ export type AccessAuditEvent = {
   targetUserId: string | null;
   action: string;
   metadata: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type AccessEmailDelivery = {
+  id: string;
+  emailType: string;
+  status: "sent" | "failed";
+  providerMessageId: string | null;
+  sentAt: string | null;
+  failureCategory: string | null;
+  actorUserId: string | null;
+  correlationId: string;
   createdAt: string;
 };
 
@@ -115,6 +139,11 @@ const profileColumns = [
   "disabled_at",
   "disabled_by",
   "admin_notes",
+  "must_set_password",
+  "invitation_sent_at",
+  "setup_reminder_sent_at",
+  "password_reset_requested_at",
+  "last_auth_email_status",
   "created_at",
   "updated_at",
 ].join(",");
@@ -122,7 +151,10 @@ const profileColumns = [
 const finalAdminMessage = "Vayvyx must retain at least one active platform administrator.";
 
 export class AccessManagementService {
-  constructor(private readonly admin: SupabaseClient) {}
+  constructor(
+    private readonly admin: SupabaseClient,
+    private readonly authEmailService?: AuthEmailService
+  ) {}
 
   async listPeople(auth: AuthContext, query: PeopleListQuery) {
     this.requireAdmin(auth);
@@ -163,6 +195,7 @@ export class AccessManagementService {
       ...person,
       adminNotes: profile?.admin_notes ?? null,
       audit: await this.listAuditEvents(auth, userId),
+      emailDeliveries: await this.listEmailDeliveries(auth, userId),
     };
   }
 
@@ -173,9 +206,15 @@ export class AccessManagementService {
     ipAddress?: string | null
   ) {
     this.requireAdmin(auth);
+    const emailService = this.requireAuthEmailService();
     const existingUser = await this.findAuthUserByEmail(input.email);
 
     if (existingUser) {
+      const existingPerson = await this.toExistingPerson(auth, existingUser.id);
+      if (existingPerson?.status === "active") {
+        return { result: "account_already_active" as const, person: existingPerson };
+      }
+
       await this.prepareProfile(existingUser.id, input, auth.userId, "setup_incomplete");
       await this.upsertMailboxAssignments(
         auth,
@@ -191,45 +230,60 @@ export class AccessManagementService {
         ipAddress,
       });
 
-      const person = await this.getPerson(auth, existingUser.id);
-      if (person.status === "active") {
-        return { result: "account_already_active" as const, person };
+      const link = await emailService.generateInviteActionLink({
+        email: input.email,
+        fullName: input.fullName,
+        redirectTo,
+      });
+      try {
+        await emailService.sendWelcomeInvitation({
+          to: input.email,
+          targetUserId: existingUser.id,
+          actorUserId: auth.userId,
+          fullName: input.fullName,
+          accessType: input.accessType,
+          accessExpiresAt: input.accessExpiresAt,
+          actionUrl: link.actionUrl,
+          ipAddress,
+        });
+      } catch (error) {
+        await this.admin
+          .from("profiles")
+          .update({
+            account_status: "setup_incomplete",
+            must_set_password: true,
+            last_auth_email_status: "failed",
+          })
+          .eq("id", existingUser.id);
+        throw new HttpError(502, "AUTH_EMAIL_SEND_FAILED", "Invitation email failed.", error);
       }
 
+      const person = await this.getPerson(auth, existingUser.id);
       return {
         result:
           existingUser.confirmed_at || existingUser.email_confirmed_at
             ? ("existing_account_needs_access_assignment" as const)
-            : ("invitation_already_pending" as const),
+            : ("invited" as const),
         person,
       };
     }
 
-    const { data, error } = await this.admin.auth.admin.inviteUserByEmail(
-      input.email,
-      {
-        redirectTo,
-        data: {
-          full_name: input.fullName,
-          vayvyx_invited: true,
-        },
-      }
-    );
+    const link = await emailService.generateInviteActionLink({
+      email: input.email,
+      fullName: input.fullName,
+      redirectTo,
+    });
 
-    if (error || !data.user) {
-      throw new HttpError(400, "INVITATION_FAILED", "Invitation could not be sent.");
-    }
-
-    await this.prepareProfile(data.user.id, input, auth.userId, "invited");
+    await this.prepareProfile(link.user.id, input, auth.userId, "invited");
     await this.upsertMailboxAssignments(
       auth,
-      data.user.id,
+      link.user.id,
       input.mailboxAssignments,
       ipAddress
     );
     await this.recordAudit({
       actorUserId: auth.userId,
-      targetUserId: data.user.id,
+      targetUserId: link.user.id,
       action: "person_invited",
       metadata: {
         platformRole: input.platformRole,
@@ -239,9 +293,32 @@ export class AccessManagementService {
       ipAddress,
     });
 
+    try {
+      await emailService.sendWelcomeInvitation({
+        to: input.email,
+        targetUserId: link.user.id,
+        actorUserId: auth.userId,
+        fullName: input.fullName,
+        accessType: input.accessType,
+        accessExpiresAt: input.accessExpiresAt,
+        actionUrl: link.actionUrl,
+        ipAddress,
+      });
+    } catch (error) {
+      await this.admin
+        .from("profiles")
+        .update({
+          account_status: "setup_incomplete",
+          must_set_password: true,
+          last_auth_email_status: "failed",
+        })
+        .eq("id", link.user.id);
+      throw new HttpError(502, "AUTH_EMAIL_SEND_FAILED", "Invitation email failed.", error);
+    }
+
     return {
       result: "invited" as const,
-      person: await this.getPerson(auth, data.user.id),
+      person: await this.getPerson(auth, link.user.id),
     };
   }
 
@@ -250,6 +327,14 @@ export class AccessManagementService {
     fullName: string,
     ipAddress?: string | null
   ) {
+    if (
+      auth.accountStatus !== "invited" &&
+      auth.accountStatus !== "setup_incomplete" &&
+      !auth.mustSetPassword
+    ) {
+      throw new HttpError(400, "INVALID_REQUEST", "Account setup is already complete.");
+    }
+
     const now = new Date().toISOString();
     const email = auth.email?.toLowerCase() ?? null;
     const { error } = await this.admin.from("profiles").upsert(
@@ -259,6 +344,7 @@ export class AccessManagementService {
         full_name: fullName,
         account_status: "active",
         setup_completed_at: now,
+        must_set_password: false,
       },
       { onConflict: "id" }
     );
@@ -271,7 +357,9 @@ export class AccessManagementService {
       actorUserId: auth.userId,
       targetUserId: auth.userId,
       action: "invite_completed",
-      metadata: {},
+      metadata: {
+        emailConfirmed: Boolean(auth.user.confirmed_at || auth.user.email_confirmed_at),
+      },
       ipAddress,
     });
 
@@ -335,20 +423,13 @@ export class AccessManagementService {
     ipAddress?: string | null
   ) {
     this.requireAdmin(auth);
-    const email = await this.getTargetEmail(userId);
-    const { error } = await this.admin.auth.resetPasswordForEmail(email, {
-      redirectTo,
-    });
-
-    if (error) {
-      throw new HttpError(400, "RESET_EMAIL_FAILED", "Password reset email could not be sent.");
-    }
-
-    await this.recordAudit({
+    const target = await this.getTargetIdentity(userId);
+    await this.requireAuthEmailService().sendPasswordReset({
       actorUserId: auth.userId,
       targetUserId: userId,
-      action: "password_reset_sent",
-      metadata: {},
+      email: target.email,
+      fullName: target.fullName,
+      redirectTo,
       ipAddress,
     });
 
@@ -367,29 +448,27 @@ export class AccessManagementService {
       return { result: "account_already_active" as const, person };
     }
 
-    const email = await this.getTargetEmail(userId);
-    const invite = await this.admin.auth.admin.inviteUserByEmail(email, {
+    const target = await this.getTargetIdentity(userId);
+    const emailService = this.requireAuthEmailService();
+    const link = await emailService.generateInviteActionLink({
+      email: target.email,
+      fullName: target.fullName ?? target.email,
       redirectTo,
-      data: {
-        full_name: person.fullName ?? undefined,
-        vayvyx_invited: true,
-      },
     });
-
-    if (invite.error) {
-      const resend = await this.admin.auth.resend({
-        type: "signup",
-        email,
-        options: { emailRedirectTo: redirectTo },
-      });
-      if (resend.error) {
-        throw new HttpError(400, "INVITATION_FAILED", "Invitation could not be resent.");
-      }
-    }
+    await emailService.sendSetupReminder({
+      to: target.email,
+      targetUserId: userId,
+      actorUserId: auth.userId,
+      fullName: target.fullName,
+      accessType: person.accessType,
+      accessExpiresAt: person.accessExpiresAt,
+      actionUrl: link.actionUrl,
+      ipAddress,
+    });
 
     await this.admin
       .from("profiles")
-      .update({ account_status: "invited" })
+      .update({ account_status: "invited", must_set_password: true })
       .eq("id", userId);
 
     await this.recordAudit({
@@ -401,6 +480,40 @@ export class AccessManagementService {
     });
 
     return { result: "invited" as const, person: await this.getPerson(auth, userId) };
+  }
+
+  async sendSetupReminder(
+    auth: AuthContext,
+    userId: string,
+    redirectTo: string,
+    ipAddress?: string | null
+  ) {
+    this.requireAdmin(auth);
+    const person = await this.getPerson(auth, userId);
+    if (person.status === "active") {
+      throw new HttpError(400, "INVALID_REQUEST", "This account is already active. Send a password reset instead.");
+    }
+
+    const target = await this.getTargetIdentity(userId);
+    const emailService = this.requireAuthEmailService();
+    const link = await emailService.generateInviteActionLink({
+      email: target.email,
+      fullName: target.fullName ?? target.email,
+      redirectTo,
+    });
+
+    await emailService.sendSetupReminder({
+      to: target.email,
+      targetUserId: userId,
+      actorUserId: auth.userId,
+      fullName: target.fullName,
+      accessType: person.accessType,
+      accessExpiresAt: person.accessExpiresAt,
+      actionUrl: link.actionUrl,
+      ipAddress,
+    });
+
+    return { ok: true };
   }
 
   async disablePerson(
@@ -500,6 +613,7 @@ export class AccessManagementService {
       access_type: "beta",
       account_status: setupComplete ? "active" : "setup_incomplete",
       setup_completed_at: setupComplete ? new Date().toISOString() : null,
+      must_set_password: !setupComplete,
     });
 
     if (insertError) {
@@ -664,9 +778,51 @@ export class AccessManagementService {
     }));
   }
 
+  async listEmailDeliveries(auth: AuthContext, userId: string): Promise<AccessEmailDelivery[]> {
+    this.requireAdmin(auth);
+    const { data, error } = await this.admin
+      .from("auth_email_delivery_log")
+      .select("id,email_type,status,provider_message_id,sent_at,failure_category,actor_user_id,correlation_id,created_at")
+      .eq("target_user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(25);
+
+    if (error) {
+      return [];
+    }
+
+    return (data ?? []).map((row) => ({
+      id: row.id,
+      emailType: row.email_type,
+      status: row.status === "sent" ? "sent" : "failed",
+      providerMessageId: row.provider_message_id,
+      sentAt: row.sent_at,
+      failureCategory: row.failure_category,
+      actorUserId: row.actor_user_id,
+      correlationId: row.correlation_id,
+      createdAt: row.created_at,
+    }));
+  }
+
   private requireAdmin(auth: AuthContext) {
     if (auth.platformRole !== "admin") {
       throw new HttpError(403, "ACCESS_DENIED", "Platform administrator access is required.");
+    }
+  }
+
+  private requireAuthEmailService() {
+    if (!this.authEmailService) {
+      throw new HttpError(500, "INTERNAL_ERROR", "Authentication email delivery is not configured.");
+    }
+
+    return this.authEmailService;
+  }
+
+  private async toExistingPerson(auth: AuthContext, userId: string) {
+    try {
+      return await this.getPerson(auth, userId);
+    } catch {
+      return null;
     }
   }
 
@@ -748,14 +904,18 @@ export class AccessManagementService {
     return profile;
   }
 
-  private async getTargetEmail(userId: string) {
+  private async getTargetIdentity(userId: string) {
     const { data } = await this.admin.auth.admin.getUserById(userId);
     const profile = await this.getProfile(userId);
     const email = data.user?.email?.toLowerCase() ?? profile?.email?.toLowerCase() ?? null;
     if (!email) {
       throw new HttpError(400, "EMAIL_UNAVAILABLE", "This account does not have an email address.");
     }
-    return email;
+
+    return {
+      email,
+      fullName: profile?.full_name ?? (data.user ? readFullName(data.user) : null),
+    };
   }
 
   private async prepareProfile(
@@ -772,6 +932,8 @@ export class AccessManagementService {
         role: input.platformRole,
         access_type: input.accessType,
         account_status: status,
+        setup_completed_at: null,
+        must_set_password: true,
         access_expires_at: input.accessExpiresAt,
         invited_by: invitedBy,
         admin_notes: input.adminNotes,
@@ -860,7 +1022,11 @@ export class AccessManagementService {
     const diagnostics: string[] = [];
     if (!user) diagnostics.push("Auth account missing");
     if (!profile) diagnostics.push("Profile missing");
+    if (profile?.invitation_sent_at) diagnostics.push("Invitation sent");
     if (user && !user.email_confirmed_at && !user.confirmed_at) diagnostics.push("Email not confirmed");
+    if (user && (user.email_confirmed_at || user.confirmed_at)) diagnostics.push("Email confirmed");
+    if (profile?.must_set_password) diagnostics.push("Password not created");
+    if (profile?.setup_completed_at) diagnostics.push("Setup complete");
     if (user?.banned_until && Date.parse(user.banned_until) > Date.now()) {
       diagnostics.push("Authentication issue");
     }
@@ -881,9 +1047,14 @@ export class AccessManagementService {
       accessType: profile?.access_type ?? "none",
       invitationStatus,
       setupCompletedAt: profile?.setup_completed_at ?? null,
+      mustSetPassword: profile?.must_set_password ?? false,
       accessExpiresAt: profile?.access_expires_at ?? null,
       lastSignInAt: user?.last_sign_in_at ?? null,
       createdAt: user?.created_at ?? profile?.created_at ?? null,
+      lastInvitationSentAt: profile?.invitation_sent_at ?? null,
+      lastSetupReminderSentAt: profile?.setup_reminder_sent_at ?? null,
+      lastPasswordResetRequestedAt: profile?.password_reset_requested_at ?? null,
+      lastDeliveryResult: profile?.last_auth_email_status ?? null,
       assignedMailboxes,
       diagnostics,
       profileMissing: Boolean(user && !profile),
@@ -984,6 +1155,7 @@ function deriveStatus(user: User | null, profile: ProfileRow | null): AccessStat
   }
   if (profile.account_status === "invited") return "invited";
   if (profile.account_status === "setup_incomplete") return "setup_incomplete";
+  if (profile.must_set_password || !profile.setup_completed_at) return "setup_incomplete";
   if (!user.email_confirmed_at && !user.confirmed_at) return "setup_incomplete";
   return "active";
 }
@@ -1031,6 +1203,9 @@ function sanitizeMetadata(value: unknown): Record<string, unknown> {
     "recovery_link",
     "invitation_link",
     "hashed_token",
+    "email_otp",
+    "verification_type",
+    "redirect_to",
   ]);
   const result: Record<string, unknown> = {};
 

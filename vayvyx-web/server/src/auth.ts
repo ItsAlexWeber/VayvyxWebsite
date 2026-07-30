@@ -67,6 +67,7 @@ export function requireAuthenticated(clients: AppSupabaseClients) {
         accessType: profile.accessType,
         accountStatus: profile.accountStatus,
         setupCompletedAt: profile.setupCompletedAt,
+        mustSetPassword: profile.mustSetPassword,
         accessExpiresAt: profile.accessExpiresAt,
       };
 
@@ -109,7 +110,12 @@ export function requireActiveAccount(
       );
     }
 
-    if (auth.accountStatus === "invited" || auth.accountStatus === "setup_incomplete") {
+    if (
+      auth.accountStatus === "invited" ||
+      auth.accountStatus === "setup_incomplete" ||
+      auth.mustSetPassword ||
+      !auth.setupCompletedAt
+    ) {
       throw new HttpError(
         403,
         "SETUP_INCOMPLETE",
@@ -142,11 +148,12 @@ async function getAuthProfile(admin: SupabaseClient, userId: string): Promise<{
   accessType: AccessType;
   accountStatus: AccountStatus | "profile_missing";
   setupCompletedAt: string | null;
+  mustSetPassword: boolean;
   accessExpiresAt: string | null;
 }> {
   const { data, error } = await admin
     .from("profiles")
-    .select("role,access_type,account_status,setup_completed_at,access_expires_at")
+    .select("role,access_type,account_status,setup_completed_at,must_set_password,access_expires_at")
     .eq("id", userId)
     .maybeSingle();
 
@@ -160,6 +167,7 @@ async function getAuthProfile(admin: SupabaseClient, userId: string): Promise<{
       accessType: "none",
       accountStatus: "profile_missing",
       setupCompletedAt: null,
+      mustSetPassword: false,
       accessExpiresAt: null,
     };
   }
@@ -174,6 +182,7 @@ async function getAuthProfile(admin: SupabaseClient, userId: string): Promise<{
       typeof data.setup_completed_at === "string"
         ? data.setup_completed_at
         : null,
+    mustSetPassword: data.must_set_password === true,
     accessExpiresAt:
       typeof data.access_expires_at === "string"
         ? data.access_expires_at

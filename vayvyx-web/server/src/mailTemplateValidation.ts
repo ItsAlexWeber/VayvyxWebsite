@@ -82,6 +82,10 @@ export const sendTemplateTestSchema = z.object({
   variables: templateVariableMap,
 });
 
+export const sendAuthTemplateTestSchema = z.object({
+  to: z.string().trim().email().max(320).toLowerCase(),
+});
+
 export const importTemplateFieldsSchema = z.object({
   name: z.string().trim().min(1).max(160),
   description: nullableTrimmed,

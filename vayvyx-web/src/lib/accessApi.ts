@@ -128,6 +128,13 @@ export const accessApi = {
     );
   },
 
+  sendSetupReminder(userId: string) {
+    return requestJson<{ ok: true }>(
+      `/api/access/people/${userId}/setup-reminder`,
+      { method: "POST", body: JSON.stringify({}) }
+    );
+  },
+
   disablePerson(userId: string) {
     return requestJson<AccessPersonDetail>(`/api/access/people/${userId}/disable`, {
       method: "POST",

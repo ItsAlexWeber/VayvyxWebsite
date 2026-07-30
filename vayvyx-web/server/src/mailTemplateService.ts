@@ -72,6 +72,11 @@ const templateColumns = [
   "is_active",
   "created_at",
   "updated_at",
+  "system_key",
+  "is_delete_protected",
+  "default_subject_template",
+  "default_html_content",
+  "default_plain_text_content",
 ].join(",");
 
 const assetColumns = [
@@ -86,7 +91,7 @@ const assetColumns = [
   "created_at",
 ].join(",");
 
-const httpsUrlTemplateVariables = ["login_url", "password_reset_url"];
+const httpsUrlTemplateVariables = ["login_url", "password_reset_url", "action_url"];
 
 export class MailTemplateService {
   constructor(
@@ -125,6 +130,12 @@ export class MailTemplateService {
     const row = await this.getTemplateRow(templateId);
     await this.requireRead(auth, row);
     const assets = await this.listAssetRows(templateId);
+    return toTemplateDetail(row, assets);
+  }
+
+  async getSystemTemplateByKey(systemKey: string): Promise<MailTemplateDetail> {
+    const row = await this.getSystemTemplateRow(systemKey);
+    const assets = await this.listAssetRows(row.id);
     return toTemplateDetail(row, assets);
   }
 
@@ -306,6 +317,10 @@ export class MailTemplateService {
     const row = await this.getTemplateRow(templateId);
     await this.requireEdit(auth, row);
 
+    if (row.scope === "system" || row.is_delete_protected) {
+      throw new HttpError(403, "ACCESS_DENIED", "Protected system templates cannot be deleted.");
+    }
+
     const { error } = await this.admin
       .from("mail_templates")
       .update({ is_active: false, updated_by: auth.userId })
@@ -326,6 +341,49 @@ export class MailTemplateService {
     });
 
     return { ok: true };
+  }
+
+  async restoreSystemTemplateDefault(
+    auth: AuthContext,
+    templateId: string,
+    ipAddress?: string | null
+  ): Promise<MailTemplateDetail> {
+    const row = await this.getTemplateRow(templateId);
+    await this.requireEdit(auth, row);
+
+    if (
+      row.scope !== "system" ||
+      !row.system_key ||
+      !row.default_html_content
+    ) {
+      throw new HttpError(400, "INVALID_REQUEST", "Only protected system templates can be restored.");
+    }
+
+    const { error } = await this.admin
+      .from("mail_templates")
+      .update({
+        subject_template: row.default_subject_template,
+        html_content: row.default_html_content,
+        plain_text_content: row.default_plain_text_content,
+        updated_by: auth.userId,
+      })
+      .eq("id", templateId);
+
+    if (error) {
+      throw new HttpError(500, "INTERNAL_ERROR", "System template could not be restored.");
+    }
+
+    await this.audit.record({
+      actorUserId: auth.userId,
+      mailAccountId: row.default_mail_account_id,
+      action: "system_template_restored",
+      targetType: "mail_template",
+      targetIdentifier: row.id,
+      metadata: { systemKey: row.system_key },
+      ipAddress,
+    });
+
+    return this.getTemplate(auth, templateId);
   }
 
   async importTemplate(
@@ -526,6 +584,27 @@ export class MailTemplateService {
     };
   }
 
+  async renderSystemTemplateForSend(
+    systemKey: string,
+    variables: Record<string, string>,
+    options: { allowUnresolved?: boolean } = {}
+  ): Promise<MailTemplateRendered & { inlineAssets: MailTemplateInlineAsset[]; templateId: string }> {
+    const detail = await this.getSystemTemplateByKey(systemKey);
+    const rendered = renderStoredTemplate(detail, variables, options.allowUnresolved === true);
+    const assetRows = await this.listAssetRows(detail.id);
+
+    return {
+      ...rendered,
+      templateId: detail.id,
+      inlineAssets: assetRows.map((asset) => ({
+        cid: asset.cid,
+        filename: asset.filename,
+        contentType: asset.content_type,
+        contentBase64: asset.content_base64,
+      })),
+    };
+  }
+
   validateVariables(
     subjectTemplate: string | null | undefined,
     htmlContent: string,
@@ -558,6 +637,22 @@ export class MailTemplateService {
 
     if (error || !data) {
       throw new HttpError(404, "TEMPLATE_NOT_FOUND", "Template was not found.");
+    }
+
+    return data as unknown as MailTemplateRow;
+  }
+
+  private async getSystemTemplateRow(systemKey: string) {
+    const { data, error } = await this.admin
+      .from("mail_templates")
+      .select(templateColumns)
+      .eq("system_key", systemKey)
+      .eq("scope", "system")
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (error || !data) {
+      throw new HttpError(404, "TEMPLATE_NOT_FOUND", "System template was not found.");
     }
 
     return data as unknown as MailTemplateRow;
@@ -597,9 +692,6 @@ export class MailTemplateService {
       : null;
 
     if (!canEditTemplate({ userId: auth.userId, platformRole: auth.platformRole, mailboxRole }, row)) {
-      if (row.scope === "system") {
-        throw new HttpError(403, "ACCESS_DENIED", "System templates are read-only. Duplicate first.");
-      }
       throw new HttpError(403, "ACCESS_DENIED", "Template access is denied.");
     }
   }
@@ -737,6 +829,7 @@ function renderStoredTemplate(
   }
 
   validateHttpsTemplateVariables(detail, merged);
+  validateActionUrlPlacement(detail);
 
   return {
     subject: renderTemplateContent(detail.subjectTemplate ?? "", merged, { html: false }),
@@ -772,6 +865,24 @@ function validateHttpsTemplateVariables(
   }
 }
 
+function validateActionUrlPlacement(detail: MailTemplateDetail) {
+  const actionUrlVariable = /{{\s*action_url\s*}}/gi;
+  const occurrences = [...detail.htmlContent.matchAll(actionUrlVariable)].length;
+  if (occurrences === 0) return;
+
+  const approvedHrefOccurrences = [
+    ...detail.htmlContent.matchAll(/\bhref\s*=\s*("{{\s*action_url\s*}}"|'{{\s*action_url\s*}}')/gi),
+  ].length;
+
+  if (occurrences !== approvedHrefOccurrences) {
+    throw new HttpError(
+      400,
+      "INVALID_REQUEST",
+      "The action URL can only be used as a complete link href."
+    );
+  }
+}
+
 function toTemplateSummary(row: MailTemplateRow): MailTemplateSummary {
   return {
     id: row.id,
@@ -785,6 +896,8 @@ function toTemplateSummary(row: MailTemplateRow): MailTemplateSummary {
     updatedAt: row.updated_at,
     createdAt: row.created_at,
     isActive: row.is_active,
+    systemKey: row.system_key,
+    isDeleteProtected: row.is_delete_protected,
   };
 }
 
@@ -801,6 +914,9 @@ function toTemplateDetail(
       [row.subject_template ?? "", row.html_content, row.plain_text_content ?? ""].join("\n")
     ),
     assets: assets.map(toAssetSummary),
+    defaultSubjectTemplate: row.default_subject_template,
+    defaultHtmlContent: row.default_html_content,
+    defaultPlainTextContent: row.default_plain_text_content,
   };
 }
 

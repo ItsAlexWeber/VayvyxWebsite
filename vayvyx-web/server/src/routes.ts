@@ -9,6 +9,7 @@ import type { MailConnectionManager } from "./mailConnectionManager.js";
 import type { MailAuthorizationService } from "./mailAuthorizationService.js";
 import type { MailProvider } from "./mailProvider.js";
 import type { MailTemplateService } from "./mailTemplateService.js";
+import type { AuthEmailService } from "./authEmailService.js";
 import { HttpError } from "./httpError.js";
 import { requireAuthContext } from "./auth.js";
 import {
@@ -38,6 +39,7 @@ import {
   duplicateTemplateSchema,
   importTemplateFieldsSchema,
   renderTemplateSchema,
+  sendAuthTemplateTestSchema,
   sendTemplateTestSchema,
   templateAssetParamSchema,
   templateIdParamSchema,
@@ -45,6 +47,7 @@ import {
   updateTemplateSchema,
   validateTemplateVariablesSchema,
 } from "./mailTemplateValidation.js";
+import { isAuthEmailTemplateKey } from "./authEmailTemplates.js";
 import type { AuditLogger } from "./audit.js";
 import { sanitizeEmailHtml } from "./mailSanitizer.js";
 import type { MailAccountPrivate } from "./types.js";
@@ -56,6 +59,7 @@ type RoutesDeps = {
   connectionManager: MailConnectionManager;
   mailProvider: MailProvider;
   templateService?: MailTemplateService;
+  authEmailService?: AuthEmailService;
   audit: AuditLogger;
 };
 
@@ -419,6 +423,55 @@ export function createRoutes(deps: RoutesDeps) {
       const auth = requireAuthContext(request);
       const params = templateIdParamSchema.parse(request.params);
       response.json(await requireTemplateService(deps).deactivateTemplate(auth, params.templateId, request.ip));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/api/mail/templates/:templateId/restore-default", async (request, response, next) => {
+    try {
+      const auth = requireAuthContext(request);
+      const params = templateIdParamSchema.parse(request.params);
+      response.json(
+        await requireTemplateService(deps).restoreSystemTemplateDefault(
+          auth,
+          params.templateId,
+          request.ip
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/api/mail/templates/:templateId/auth-test-send", async (request, response, next) => {
+    try {
+      const auth = requireAuthContext(request);
+      if (auth.platformRole !== "admin") {
+        throw new HttpError(403, "ACCESS_DENIED", "Platform administrator access is required.");
+      }
+      const params = templateIdParamSchema.parse(request.params);
+      const input = sendAuthTemplateTestSchema.parse(request.body ?? {});
+      const template = await requireTemplateService(deps).getTemplate(auth, params.templateId);
+      if (!isAuthEmailTemplateKey(template.systemKey)) {
+        throw new HttpError(400, "INVALID_REQUEST", "Only authentication system templates can be tested here.");
+      }
+      const result = await requireAuthEmailService(deps).sendTemplateTest(
+        auth,
+        template.systemKey,
+        input.to,
+        request.ip
+      );
+      await deps.audit.record({
+        actorUserId: auth.userId,
+        mailAccountId: null,
+        action: "auth_template_test_sent",
+        targetType: "mail_template",
+        targetIdentifier: params.templateId,
+        metadata: { systemKey: template.systemKey, messageId: result.messageId },
+        ipAddress: request.ip,
+      });
+      response.json(result);
     } catch (error) {
       next(error);
     }
@@ -844,6 +897,14 @@ function requireTemplateService(deps: RoutesDeps) {
   }
 
   return deps.templateService;
+}
+
+function requireAuthEmailService(deps: RoutesDeps) {
+  if (!deps.authEmailService) {
+    throw new HttpError(500, "INTERNAL_ERROR", "Authentication email delivery is not configured.");
+  }
+
+  return deps.authEmailService;
 }
 
 async function deriveSendInput(

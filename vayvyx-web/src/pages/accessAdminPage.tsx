@@ -12,7 +12,7 @@ import {
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import type { NavigateWithTransition } from "../app.tsx";
 import { accessApi } from "../lib/accessApi.ts";
-import { MailApiRequestError } from "../lib/mailApi.ts";
+import { mailApi, MailApiRequestError } from "../lib/mailApi.ts";
 import type {
   AccessMailboxOption,
   AccessPersonDetail,
@@ -23,6 +23,11 @@ import type {
   PlatformRole,
 } from "../types/access.ts";
 import type { MailboxAccessRole } from "../types/mail.ts";
+import type {
+  MailTemplateDetail,
+  MailTemplateRendered,
+  MailTemplateSummary,
+} from "../types/mail.ts";
 import "../styles/accessAdminPage.css";
 
 type Props = {
@@ -61,6 +66,14 @@ const blankInvite: InvitePersonInput = {
 export function AccessAdminPage({ onNavigate }: Props) {
   const [people, setPeople] = useState<AccessPersonSummary[]>([]);
   const [mailboxes, setMailboxes] = useState<AccessMailboxOption[]>([]);
+  const [authTemplates, setAuthTemplates] = useState<MailTemplateSummary[]>([]);
+  const [selectedAuthTemplate, setSelectedAuthTemplate] =
+    useState<MailTemplateDetail | null>(null);
+  const [authTemplateDraft, setAuthTemplateDraft] =
+    useState<MailTemplateDetail | null>(null);
+  const [authTemplatePreview, setAuthTemplatePreview] =
+    useState<MailTemplateRendered | null>(null);
+  const [authTemplateTestEmail, setAuthTemplateTestEmail] = useState("");
   const [selected, setSelected] = useState<AccessPersonDetail | null>(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<AccountStatus | "all">("all");
@@ -98,6 +111,8 @@ export function AccessAdminPage({ onNavigate }: Props) {
       ]);
       setPeople(peopleResult);
       setMailboxes(mailboxResult);
+      const templates = await mailApi.getTemplates({ scope: "system" }).catch(() => []);
+      setAuthTemplates(templates.filter((template) => template.systemKey?.startsWith("auth_")));
     } catch (error) {
       if (error instanceof MailApiRequestError && error.code === "AUTH_REQUIRED") {
         onNavigate("/login");
@@ -213,6 +228,24 @@ export function AccessAdminPage({ onNavigate }: Props) {
     }
   }
 
+  async function sendWelcomeInvitation() {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      const result = await accessApi.resendInvite(selected.id);
+      setSelected(result.person);
+      setMessage(
+        result.result === "account_already_active"
+          ? "This account is already active. Send a password reset instead."
+          : "Welcome invitation sent.",
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Welcome invitation could not be sent.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function resendInvite() {
     if (!selected) return;
     setBusy(true);
@@ -222,6 +255,102 @@ export function AccessAdminPage({ onNavigate }: Props) {
       setMessage(inviteResultMessage(result.result));
     } catch {
       setMessage("Invitation could not be resent.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendSetupReminder() {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await accessApi.sendSetupReminder(selected.id);
+      setSelected(await accessApi.getPerson(selected.id));
+      setMessage("Setup reminder sent.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Setup reminder could not be sent.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openAuthTemplate(templateId: string) {
+    setBusy(true);
+    setMessage("");
+    try {
+      const detail = await mailApi.getTemplate(templateId);
+      setSelectedAuthTemplate(detail);
+      setAuthTemplateDraft(detail);
+      setAuthTemplatePreview(
+        await mailApi.renderTemplatePreview(detail.id, authPreviewVariables(detail.systemKey)),
+      );
+    } catch {
+      setMessage("Authentication email template could not be opened.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveAuthTemplate() {
+    if (!authTemplateDraft) return;
+    setBusy(true);
+    try {
+      const updated = await mailApi.updateTemplate(authTemplateDraft.id, {
+        name: authTemplateDraft.name,
+        description: authTemplateDraft.description,
+        subjectTemplate: authTemplateDraft.subjectTemplate,
+        htmlContent: authTemplateDraft.htmlContent,
+        plainTextContent: authTemplateDraft.plainTextContent,
+      });
+      setSelectedAuthTemplate(updated);
+      setAuthTemplateDraft(updated);
+      setAuthTemplatePreview(
+        await mailApi.renderTemplatePreview(updated.id, authPreviewVariables(updated.systemKey)),
+      );
+      setAuthTemplates((templates) =>
+        templates.map((template) => (template.id === updated.id ? updated : template)),
+      );
+      setMessage("Authentication email template updated.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Authentication email template could not be updated.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function restoreAuthTemplateDefault() {
+    if (!selectedAuthTemplate) return;
+    if (!window.confirm("Restore this authentication email to the Vayvyx default?")) return;
+    setBusy(true);
+    try {
+      const restored = await mailApi.restoreTemplateDefault(selectedAuthTemplate.id);
+      setSelectedAuthTemplate(restored);
+      setAuthTemplateDraft(restored);
+      setAuthTemplatePreview(
+        await mailApi.renderTemplatePreview(restored.id, authPreviewVariables(restored.systemKey)),
+      );
+      setAuthTemplates((templates) =>
+        templates.map((template) => (template.id === restored.id ? restored : template)),
+      );
+      setMessage("Authentication email restored to default.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Authentication email could not be restored.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendAuthTemplateTest() {
+    if (!selectedAuthTemplate || !authTemplateTestEmail.trim()) return;
+    setBusy(true);
+    try {
+      await mailApi.sendAuthTemplateTest(
+        selectedAuthTemplate.id,
+        authTemplateTestEmail.trim().toLowerCase(),
+      );
+      setMessage("Test authentication email sent.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Test authentication email could not be sent.");
     } finally {
       setBusy(false);
     }
@@ -377,6 +506,107 @@ export function AccessAdminPage({ onNavigate }: Props) {
         >
           <UserPlus size={17} /> Invite person
         </button>
+      </section>
+
+      <section className="access-auth-email-panel" aria-label="Authentication Emails">
+        <div className="access-auth-email-header">
+          <div>
+            <p className="access-admin-eyebrow">System emails</p>
+            <h2>Authentication Emails</h2>
+          </div>
+          <span>Sent from Vayvyx Support</span>
+        </div>
+        <div className="access-auth-email-layout">
+          <div className="access-auth-template-list">
+            {authTemplates.length === 0 && <p>No authentication templates available.</p>}
+            {authTemplates.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                className={selectedAuthTemplate?.id === template.id ? "active" : ""}
+                onClick={() => openAuthTemplate(template.id)}
+              >
+                <strong>{template.name}</strong>
+                <small>{template.systemKey}</small>
+              </button>
+            ))}
+          </div>
+          {authTemplateDraft ? (
+            <div className="access-auth-template-editor">
+              <div className="access-auth-template-fields">
+                <label>
+                  <span>Subject</span>
+                  <input
+                    value={authTemplateDraft.subjectTemplate ?? ""}
+                    onChange={(event) =>
+                      setAuthTemplateDraft({
+                        ...authTemplateDraft,
+                        subjectTemplate: event.target.value || null,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>HTML</span>
+                  <textarea
+                    value={authTemplateDraft.htmlContent}
+                    onChange={(event) =>
+                      setAuthTemplateDraft({
+                        ...authTemplateDraft,
+                        htmlContent: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Plain-text fallback</span>
+                  <textarea
+                    value={authTemplateDraft.plainTextContent ?? ""}
+                    onChange={(event) =>
+                      setAuthTemplateDraft({
+                        ...authTemplateDraft,
+                        plainTextContent: event.target.value || null,
+                      })
+                    }
+                  />
+                </label>
+                <div className="access-auth-template-actions">
+                  <button type="button" onClick={saveAuthTemplate} disabled={busy}>
+                    Save template
+                  </button>
+                  <button type="button" onClick={restoreAuthTemplateDefault} disabled={busy}>
+                    Reset to default
+                  </button>
+                </div>
+                <div className="access-auth-template-test">
+                  <input
+                    type="email"
+                    value={authTemplateTestEmail}
+                    onChange={(event) => setAuthTemplateTestEmail(event.target.value)}
+                    placeholder="test@example.com"
+                    aria-label="Authentication template test email"
+                  />
+                  <button
+                    type="button"
+                    onClick={sendAuthTemplateTest}
+                    disabled={busy || !authTemplateTestEmail.trim()}
+                  >
+                    Send test
+                  </button>
+                </div>
+              </div>
+              <iframe
+                className="access-auth-template-preview"
+                title="Authentication email preview"
+                sandbox="allow-popups allow-popups-to-escape-sandbox"
+                referrerPolicy="no-referrer"
+                srcDoc={authTemplatePreview?.htmlContent ?? authTemplateDraft.htmlContent}
+              />
+            </div>
+          ) : (
+            <p className="access-admin-state">Select an authentication email to preview or edit it.</p>
+          )}
+        </div>
       </section>
 
       <section className="access-people-panel">
@@ -640,6 +870,10 @@ export function AccessAdminPage({ onNavigate }: Props) {
                 <div><dt>Status</dt><dd>{selected.statusLabel}</dd></div>
                 <div><dt>Last sign-in</dt><dd>{formatDate(selected.lastSignInAt)}</dd></div>
                 <div><dt>Created</dt><dd>{formatDate(selected.createdAt)}</dd></div>
+                <div><dt>Last invitation</dt><dd>{formatDate(selected.lastInvitationSentAt)}</dd></div>
+                <div><dt>Last setup reminder</dt><dd>{formatDate(selected.lastSetupReminderSentAt)}</dd></div>
+                <div><dt>Last reset request</dt><dd>{formatDate(selected.lastPasswordResetRequestedAt)}</dd></div>
+                <div><dt>Last delivery</dt><dd>{selected.lastDeliveryResult ?? "Unavailable"}</dd></div>
               </dl>
               <div className="access-diagnostic-list">
                 {selected.diagnostics.map((diagnostic) => (
@@ -655,11 +889,33 @@ export function AccessAdminPage({ onNavigate }: Props) {
                 />
               </label>
               <div className="access-admin-actions">
+                {selected.status !== "active" && (
+                  <button type="button" onClick={sendWelcomeInvitation} disabled={busy || selected.authMissing}>
+                    Send welcome invitation
+                  </button>
+                )}
+                {selected.status !== "active" && (
+                  <button type="button" onClick={resendInvite} disabled={busy || selected.authMissing}>
+                    Resend invitation
+                  </button>
+                )}
+                {selected.status !== "active" && (
+                  <button type="button" onClick={sendSetupReminder} disabled={busy || selected.authMissing}>
+                    Send setup reminder
+                  </button>
+                )}
                 <button type="button" onClick={sendReset} disabled={busy || selected.authMissing}>
                   Send password reset
                 </button>
-                <button type="button" onClick={resendInvite} disabled={busy || selected.status === "active"}>
-                  Resend invitation
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstTemplate = authTemplates[0];
+                    if (firstTemplate) void openAuthTemplate(firstTemplate.id);
+                  }}
+                  disabled={busy || authTemplates.length === 0}
+                >
+                  Preview system email template
                 </button>
                 {selected.profileMissing && (
                   <button type="button" onClick={repairProfile} disabled={busy}>
@@ -756,6 +1012,23 @@ export function AccessAdminPage({ onNavigate }: Props) {
                 ))}
               </div>
             </section>
+
+            <section>
+              <h3>Email delivery history</h3>
+              <div className="access-history-list">
+                {selected.emailDeliveries.length === 0 && <p>No authentication emails sent yet.</p>}
+                {selected.emailDeliveries.map((event) => (
+                  <div key={event.id}>
+                    <strong>{event.emailType.replace(/_/g, " ")}</strong>
+                    <span>
+                      {event.status}
+                      {event.failureCategory ? ` (${event.failureCategory})` : ""}
+                    </span>
+                    <small>{formatDate(event.sentAt ?? event.createdAt)}</small>
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
         </aside>
       )}
@@ -766,7 +1039,7 @@ export function AccessAdminPage({ onNavigate }: Props) {
 function inviteResultMessage(result: string) {
   const messages: Record<string, string> = {
     invited: "Invitation sent.",
-    account_already_active: "Account already active.",
+    account_already_active: "This account is already active. Send a password reset instead.",
     invitation_already_pending: "Invitation already pending.",
     existing_account_needs_access_assignment: "Existing account needs access assignment.",
   };
@@ -794,4 +1067,32 @@ function formatDate(value: string | null) {
 function dateInputValue(value: string | null) {
   if (!value) return "";
   return value.slice(0, 10);
+}
+
+function authPreviewVariables(systemKey: string | null) {
+  return {
+    first_name: "Jordan",
+    full_name: "Jordan Smith",
+    email: "jordan@example.com",
+    action_url:
+      systemKey === "auth_password_changed"
+        ? ""
+        : "https://vayvyx.com/auth/v1/verify?preview=true",
+    action_label:
+      systemKey === "auth_password_reset"
+        ? "Reset your password"
+        : systemKey === "auth_confirm_signup"
+          ? "Confirm email"
+          : systemKey === "auth_password_changed"
+            ? ""
+            : "Complete account setup",
+    support_email: "support@vayvyx.com",
+    company_name: "Vayvyx",
+    current_year: String(new Date().getFullYear()),
+    access_type: "Private beta",
+    expiration_notice:
+      systemKey === "auth_password_changed"
+        ? "Jul 30, 2026, 11:30 AM"
+        : "For security, this link expires automatically.",
+  };
 }

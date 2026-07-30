@@ -25,6 +25,7 @@ export type AuthContext = {
   accessType: AccessType;
   accountStatus: AccountStatus | "profile_missing";
   setupCompletedAt: string | null;
+  mustSetPassword: boolean;
   accessExpiresAt: string | null;
 };
 
@@ -93,4 +94,6 @@ export type AuditAction =
   | "template_exported"
   | "template_deleted"
   | "template_used"
-  | "template_test_sent";
+  | "template_test_sent"
+  | "system_template_restored"
+  | "auth_template_test_sent";

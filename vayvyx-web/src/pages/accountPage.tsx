@@ -5,6 +5,7 @@ import {
   getPasswordPolicyHint,
   validateNewPasswordPair,
 } from "../lib/authValidation.ts";
+import { authEmailApi } from "../lib/authEmailApi.ts";
 import { mailApi, MailApiRequestError } from "../lib/mailApi.ts";
 import { supabase } from "../lib/supabaseClient.ts";
 
@@ -124,9 +125,14 @@ export function AccountPage({ onNavigate }: AccountPageProps) {
           setMailActions({ canOpenMail: false, canManageMail: false });
         } else if (
           mailError instanceof MailApiRequestError &&
+          mailError.code === "SETUP_INCOMPLETE"
+        ) {
+          onNavigate("/accept-invite");
+          return;
+        } else if (
+          mailError instanceof MailApiRequestError &&
           (mailError.code === "ACCESS_DISABLED" ||
-            mailError.code === "ACCESS_EXPIRED" ||
-            mailError.code === "SETUP_INCOMPLETE")
+            mailError.code === "ACCESS_EXPIRED")
         ) {
           await supabase.auth.signOut();
           setAccountState({
@@ -170,7 +176,7 @@ export function AccountPage({ onNavigate }: AccountPageProps) {
     }
 
     loadAccount();
-  }, []);
+  }, [onNavigate]);
 
   async function handleLogout() {
     if (!supabase) return;
@@ -228,6 +234,7 @@ export function AccountPage({ onNavigate }: AccountPageProps) {
 
       setSecurityNewPassword("");
       setSecurityConfirmPassword("");
+      await authEmailApi.notifyPasswordChanged();
       setSecurityMessage({
         type: "success",
         text: "Your password was updated.",

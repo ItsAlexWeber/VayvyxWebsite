@@ -24,6 +24,7 @@ const accessApiMock = vi.hoisted(() => ({
   updatePerson: vi.fn(),
   sendPasswordReset: vi.fn(),
   resendInvite: vi.fn(),
+  sendSetupReminder: vi.fn(),
   disablePerson: vi.fn(),
   reactivatePerson: vi.fn(),
   repairProfile: vi.fn(),
@@ -35,6 +36,12 @@ const accessApiMock = vi.hoisted(() => ({
 
 const mailApiMock = vi.hoisted(() => ({
   getAccess: vi.fn(),
+  getTemplates: vi.fn(),
+  getTemplate: vi.fn(),
+  renderTemplatePreview: vi.fn(),
+  updateTemplate: vi.fn(),
+  restoreTemplateDefault: vi.fn(),
+  sendAuthTemplateTest: vi.fn(),
 }));
 
 const supabaseMock = vi.hoisted(() => ({
@@ -75,9 +82,14 @@ const person = {
   accessType: "beta",
   invitationStatus: "setup_incomplete",
   setupCompletedAt: null,
+  mustSetPassword: true,
   accessExpiresAt: null,
   lastSignInAt: null,
   createdAt: "2026-07-01T00:00:00.000Z",
+  lastInvitationSentAt: "2026-07-01T00:00:00.000Z",
+  lastSetupReminderSentAt: null,
+  lastPasswordResetRequestedAt: null,
+  lastDeliveryResult: "sent",
   assignedMailboxes: [
     {
       id: "member-1",
@@ -106,6 +118,42 @@ const detail = {
       createdAt: "2026-07-02T00:00:00.000Z",
     },
   ],
+  emailDeliveries: [
+    {
+      id: "delivery-1",
+      emailType: "auth_welcome_invite",
+      status: "sent",
+      providerMessageId: "message-1",
+      sentAt: "2026-07-01T00:00:00.000Z",
+      failureCategory: null,
+      actorUserId: "admin-user",
+      correlationId: "correlation-1",
+      createdAt: "2026-07-01T00:00:00.000Z",
+    },
+  ],
+};
+
+const authTemplate = {
+  id: "00000000-0000-4000-8000-000000000001",
+  name: "Welcome invitation",
+  description: "Branded invite",
+  subjectTemplate: "Welcome {{first_name}}",
+  scope: "system",
+  defaultMailAccountId: null,
+  previewMetadata: null,
+  createdBy: null,
+  updatedAt: "2026-07-01T00:00:00.000Z",
+  createdAt: "2026-07-01T00:00:00.000Z",
+  isActive: true,
+  systemKey: "auth_welcome_invite",
+  isDeleteProtected: true,
+  htmlContent: '<a href="{{action_url}}">{{action_label}}</a>',
+  plainTextContent: "{{action_url}}",
+  variables: ["action_url", "action_label", "first_name"],
+  assets: [],
+  defaultSubjectTemplate: "Welcome {{first_name}}",
+  defaultHtmlContent: '<a href="{{action_url}}">{{action_label}}</a>',
+  defaultPlainTextContent: "{{action_url}}",
 };
 
 const mailbox = {
@@ -135,6 +183,7 @@ beforeEach(() => {
     result: "invited",
     person: detail,
   });
+  accessApiMock.sendSetupReminder.mockResolvedValue({ ok: true });
   accessApiMock.disablePerson.mockResolvedValue({
     ...detail,
     status: "disabled",
@@ -154,6 +203,20 @@ beforeEach(() => {
     platformAdmin: true,
     hasMailAccess: true,
     mailboxCount: 1,
+  });
+  mailApiMock.getTemplates.mockResolvedValue([authTemplate]);
+  mailApiMock.getTemplate.mockResolvedValue(authTemplate);
+  mailApiMock.renderTemplatePreview.mockResolvedValue({
+    subject: "Welcome Jordan",
+    htmlContent: "<p>Preview</p>",
+    plainTextContent: "Preview",
+    unresolvedVariables: [],
+  });
+  mailApiMock.updateTemplate.mockResolvedValue(authTemplate);
+  mailApiMock.restoreTemplateDefault.mockResolvedValue(authTemplate);
+  mailApiMock.sendAuthTemplateTest.mockResolvedValue({
+    status: "sent",
+    messageId: "message-2",
   });
   supabaseMock.auth.getSession.mockResolvedValue({
     data: {

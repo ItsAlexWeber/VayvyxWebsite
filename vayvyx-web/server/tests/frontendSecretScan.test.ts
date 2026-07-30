@@ -7,6 +7,7 @@ describe("frontend access-management source", () => {
     const root = process.cwd();
     const files = [
       "src/lib/accessApi.ts",
+      "src/lib/authEmailApi.ts",
       "src/pages/accessAdminPage.tsx",
       "src/pages/acceptInvitePage.tsx",
     ];

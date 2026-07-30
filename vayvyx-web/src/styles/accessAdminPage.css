@@ -8,6 +8,7 @@
 
 .access-admin-header,
 .access-admin-toolbar,
+.access-auth-email-panel,
 .access-people-panel,
 .access-person-drawer,
 .access-admin-modal {
@@ -112,6 +113,127 @@
   align-items: center;
   padding: 0.8rem;
   border-radius: 1.15rem;
+}
+
+.access-auth-email-panel {
+  width: min(100%, 78rem);
+  margin: 0 auto 0.8rem;
+  padding: 0.9rem;
+  border-radius: 1.15rem;
+}
+
+.access-auth-email-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.access-auth-email-header h2 {
+  margin: 0;
+  color: #f8fbff;
+  font-size: 1.05rem;
+}
+
+.access-auth-email-header span {
+  color: rgba(248, 251, 255, 0.56);
+  font-size: 0.78rem;
+}
+
+.access-auth-email-layout {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) 1fr;
+  gap: 0.8rem;
+}
+
+.access-auth-template-list {
+  display: grid;
+  align-content: start;
+  gap: 0.55rem;
+}
+
+.access-auth-template-list button {
+  min-height: 0;
+  justify-content: flex-start;
+  padding: 0.72rem;
+  border-radius: 0.85rem;
+  text-align: left;
+}
+
+.access-auth-template-list button.active,
+.access-auth-template-list button:focus-visible {
+  border-color: rgba(119, 255, 228, 0.38);
+  box-shadow: 0 0 0 3px rgba(119, 255, 228, 0.14);
+}
+
+.access-auth-template-list strong,
+.access-auth-template-list small {
+  display: block;
+}
+
+.access-auth-template-list small {
+  margin-top: 0.2rem;
+  color: rgba(248, 251, 255, 0.5);
+}
+
+.access-auth-template-editor {
+  display: grid;
+  grid-template-columns: minmax(16rem, 26rem) 1fr;
+  gap: 0.8rem;
+  min-width: 0;
+}
+
+.access-auth-template-fields {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.access-auth-template-fields label {
+  display: grid;
+  gap: 0.34rem;
+  color: rgba(248, 251, 255, 0.78);
+  font-size: 0.76rem;
+  font-weight: 780;
+}
+
+.access-auth-template-fields input,
+.access-auth-template-fields textarea,
+.access-auth-template-test input {
+  width: 100%;
+  min-height: 2.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.85rem;
+  color: #f8fbff;
+  background: rgba(255, 255, 255, 0.055);
+  outline: none;
+}
+
+.access-auth-template-fields textarea {
+  min-height: 6rem;
+  padding: 0.65rem 0.75rem;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.74rem;
+}
+
+.access-auth-template-actions,
+.access-auth-template-test {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.access-auth-template-test input {
+  flex: 1 1 12rem;
+}
+
+.access-auth-template-preview {
+  width: 100%;
+  min-height: 22rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.9rem;
+  background: #ffffff;
 }
 
 .access-admin-search {
@@ -499,7 +621,9 @@
   .access-admin-form-grid,
   .access-diagnostics,
   .access-mail-row,
-  .access-mail-add-row {
+  .access-mail-add-row,
+  .access-auth-email-layout,
+  .access-auth-template-editor {
     grid-template-columns: 1fr;
   }
 }

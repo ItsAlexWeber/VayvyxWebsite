@@ -7,6 +7,10 @@ import { isHttpError } from "./httpError.js";
 import { requireActiveAccount, requireAuthenticated } from "./auth.js";
 import { createRoutes } from "./routes.js";
 import { createAccessAdminRoutes, createInviteSetupRoutes } from "./accessRoutes.js";
+import {
+  createAuthenticatedAuthEmailRoutes,
+  createPublicAuthEmailRoutes,
+} from "./authEmailRoutes.js";
 import { AuditLogger } from "./audit.js";
 import {
   MailConnectionManager,
@@ -22,6 +26,7 @@ import {
 } from "./credentialCrypto.js";
 import { mailRateLimitKey } from "./rateLimitKey.js";
 import { AccessManagementService } from "./accessManagementService.js";
+import { AuthEmailService } from "./authEmailService.js";
 
 export type CreateAppOptions = {
   clients: AppSupabaseClients;
@@ -53,7 +58,15 @@ export function createApp(options: CreateAppOptions) {
   );
   const mailProvider = new ImapSmtpMailProvider(connectionManager);
   const templateService = new MailTemplateService(options.clients.admin, audit);
-  const accessManagementService = new AccessManagementService(options.clients.admin);
+  const authEmailService = new AuthEmailService(
+    options.clients.admin,
+    templateService,
+    connectionManager
+  );
+  const accessManagementService = new AccessManagementService(
+    options.clients.admin,
+    authEmailService
+  );
 
   app.disable("x-powered-by");
   app.disable("etag");
@@ -62,6 +75,22 @@ export function createApp(options: CreateAppOptions) {
   app.get("/api/mail/health", (_request, response) => {
     response.json({ status: "ok" });
   });
+  app.use(
+    "/api/auth/forgot-password",
+    rateLimit({
+      windowMs: 60_000,
+      limit: 6,
+      keyGenerator: mailRateLimitKey,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: {
+        ok: true,
+        message:
+          "If an account exists for that email address, a password-reset link has been sent.",
+      },
+    })
+  );
+  app.use(createPublicAuthEmailRoutes(authEmailService));
   app.use(requireAuthenticated(options.clients));
   app.use((_request, response, next) => {
     response.setHeader(
@@ -88,9 +117,15 @@ export function createApp(options: CreateAppOptions) {
       },
     })
   );
+  app.use(createAuthenticatedAuthEmailRoutes(authEmailService));
   app.use(createInviteSetupRoutes(accessManagementService));
   app.use(
-    ["/api/access/invite", "/api/access/people/:userId/reset-password", "/api/access/people/:userId/resend-invite"],
+    [
+      "/api/access/invite",
+      "/api/access/people/:userId/reset-password",
+      "/api/access/people/:userId/resend-invite",
+      "/api/access/people/:userId/setup-reminder",
+    ],
     rateLimit({
       windowMs: 15 * 60_000,
       limit: 12,
@@ -114,6 +149,7 @@ export function createApp(options: CreateAppOptions) {
       connectionManager,
       mailProvider,
       templateService,
+      authEmailService,
       audit,
     })
   );

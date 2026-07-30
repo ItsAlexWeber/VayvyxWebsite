@@ -129,6 +129,26 @@ export function createAccessAdminRoutes(service: AccessManagementService) {
     }
   );
 
+  router.post(
+    "/api/access/people/:userId/setup-reminder",
+    async (request, response, next) => {
+      try {
+        const auth = requireAuthContext(request);
+        const params = accessUserParamSchema.parse(request.params);
+        response.json(
+          await service.sendSetupReminder(
+            auth,
+            params.userId,
+            inviteRedirectForRequest(request),
+            request.ip
+          )
+        );
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
   router.post("/api/access/people/:userId/disable", async (request, response, next) => {
     try {
       const auth = requireAuthContext(request);

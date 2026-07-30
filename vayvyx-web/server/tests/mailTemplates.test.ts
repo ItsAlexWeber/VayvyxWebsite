@@ -160,11 +160,11 @@ describe("mail template permissions", () => {
     expect(canEditTemplate({ userId: "manager", platformRole: "user", mailboxRole: "manager" }, company)).toBe(true);
   });
 
-  it("allows platform admins to manage company templates but keeps system templates read-only", () => {
+  it("allows platform admins to manage company and protected system templates", () => {
     expect(canReadTemplate({ userId: "admin", platformRole: "admin", mailboxRole: null }, company)).toBe(true);
     expect(canEditTemplate({ userId: "admin", platformRole: "admin", mailboxRole: null }, company)).toBe(true);
     expect(canReadTemplate({ userId: "admin", platformRole: "admin", mailboxRole: null }, system)).toBe(true);
-    expect(canEditTemplate({ userId: "admin", platformRole: "admin", mailboxRole: null }, system)).toBe(false);
+    expect(canEditTemplate({ userId: "admin", platformRole: "admin", mailboxRole: null }, system)).toBe(true);
   });
 });
 

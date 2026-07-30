@@ -47,7 +47,14 @@ describe("hardening gate", () => {
             select: () => ({
               eq: () => ({
                 maybeSingle: async () => ({
-                  data: { role: "user" },
+                  data: {
+                    role: "user",
+                    access_type: "beta",
+                    account_status: "active",
+                    setup_completed_at: "2026-07-01T00:00:00.000Z",
+                    must_set_password: false,
+                    access_expires_at: null,
+                  },
                   error: null,
                 }),
               }),
@@ -101,7 +108,14 @@ describe("hardening gate", () => {
                 if (table === "profiles") {
                   return {
                     maybeSingle: async () => ({
-                      data: { role: "admin" },
+                      data: {
+                        role: "admin",
+                        access_type: "beta",
+                        account_status: "active",
+                        setup_completed_at: "2026-07-01T00:00:00.000Z",
+                        must_set_password: false,
+                        access_expires_at: null,
+                      },
                       error: null,
                     }),
                   };

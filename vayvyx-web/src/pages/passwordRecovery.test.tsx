@@ -34,6 +34,8 @@ const mailApiMock = vi.hoisted(() => ({
   getAccess: vi.fn(),
 }));
 
+const fetchMock = vi.hoisted(() => vi.fn());
+
 vi.mock("../lib/supabaseClient.ts", () => ({
   supabase: {
     auth: supabaseMocks.auth,
@@ -71,6 +73,8 @@ let unsubscribeMock = vi.fn();
 beforeEach(() => {
   authCallback = null;
   unsubscribeMock = vi.fn();
+  fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+  vi.stubGlobal("fetch", fetchMock);
 
   supabaseMocks.auth.resetPasswordForEmail.mockResolvedValue({
     data: {},
@@ -111,6 +115,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
 });
 
@@ -143,30 +148,26 @@ describe("password recovery and change pages", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send reset link" }));
 
     await waitFor(() =>
-      expect(supabaseMocks.auth.resetPasswordForEmail).toHaveBeenCalledWith(
-        "alex@example.com",
-        {
-          redirectTo: `${window.location.origin}/reset-password`,
-        },
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/auth/forgot-password",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ email: "alex@example.com" }),
+        }),
       ),
     );
+    expect(supabaseMocks.auth.resetPasswordForEmail).not.toHaveBeenCalled();
     expect(screen.getByText(genericResetMessage)).toBeTruthy();
     expect(document.body.textContent).not.toContain("No account");
     expect(document.body.textContent).not.toContain("registered account");
   });
 
   it("blocks duplicate forgot-password submissions while pending", async () => {
-    let resolveReset!: (value: {
-      data: Record<string, never>;
-      error: null;
-    }) => void;
-    const resetPromise = new Promise<{
-      data: Record<string, never>;
-      error: null;
-    }>((resolve) => {
+    let resolveReset!: (value: Response) => void;
+    const resetPromise = new Promise<Response>((resolve) => {
       resolveReset = resolve;
     });
-    supabaseMocks.auth.resetPasswordForEmail.mockReturnValue(resetPromise);
+    fetchMock.mockReturnValue(resetPromise);
     const { container } = render(<ForgotPasswordPage onNavigate={vi.fn()} />);
     const form = container.querySelector("form");
 
@@ -176,16 +177,13 @@ describe("password recovery and change pages", () => {
     fireEvent.submit(form!);
     fireEvent.submit(form!);
 
-    expect(supabaseMocks.auth.resetPasswordForEmail).toHaveBeenCalledTimes(1);
-    resolveReset({ data: {}, error: null });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    resolveReset(new Response("{}", { status: 200 }));
     await screen.findByText(genericResetMessage);
   });
 
   it("uses safe failure text and never renders raw forgot-password errors", async () => {
-    supabaseMocks.auth.resetPasswordForEmail.mockResolvedValue({
-      data: {},
-      error: new Error("raw access_token=secret recovery_url=https://secret"),
-    });
+    fetchMock.mockResolvedValue(new Response("raw access_token=secret recovery_url=https://secret", { status: 500 }));
     render(<ForgotPasswordPage onNavigate={vi.fn()} />);
 
     fireEvent.change(screen.getByLabelText("Email address"), {
@@ -382,10 +380,10 @@ describe("password recovery and change pages", () => {
     fireEvent.submit(form!);
 
     await waitFor(() =>
-      expect(supabaseMocks.auth.resetPasswordForEmail).toHaveBeenCalledWith(
-        "mobile@example.com",
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/auth/forgot-password",
         expect.objectContaining({
-          redirectTo: `${window.location.origin}/reset-password`,
+          body: JSON.stringify({ email: "mobile@example.com" }),
         }),
       ),
     );
