@@ -3,6 +3,17 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 export const platformRoles = ["user", "admin"] as const;
 export type PlatformRole = (typeof platformRoles)[number];
 
+export const accessTypes = ["beta", "licensed", "mail_only", "none"] as const;
+export type AccessType = (typeof accessTypes)[number];
+
+export const accountStatuses = [
+  "invited",
+  "setup_incomplete",
+  "active",
+  "disabled",
+] as const;
+export type AccountStatus = (typeof accountStatuses)[number];
+
 export const mailboxAccessRoles = ["viewer", "sender", "manager", "owner"] as const;
 export type MailboxAccessRole = (typeof mailboxAccessRoles)[number];
 
@@ -11,6 +22,10 @@ export type AuthContext = {
   userId: string;
   email: string | null;
   platformRole: PlatformRole;
+  accessType: AccessType;
+  accountStatus: AccountStatus | "profile_missing";
+  setupCompletedAt: string | null;
+  accessExpiresAt: string | null;
 };
 
 export type MailAccountSafe = {

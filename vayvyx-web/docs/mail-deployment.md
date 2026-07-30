@@ -13,8 +13,10 @@ Mailbox passwords are encrypted only inside the Node backend with AES-256-GCM be
 ## Supabase Setup
 
 1. Apply `supabase/migrations/202607280001_mail_foundation.sql`.
-2. Confirm `public.profiles.role` exists and allows only `user` or `admin`.
-4. Manually promote Alexander's profile:
+2. Apply `supabase/migrations/202607300001_access_management.sql`.
+3. Confirm `public.profiles.role` exists and allows only `user` or `admin`.
+4. Confirm `public.profiles` has the access-management fields used by the backend: `full_name`, `email`, `access_type`, `account_status`, `setup_completed_at`, `access_expires_at`, `invited_by`, `disabled_at`, `disabled_by`, `admin_notes`, and `updated_at`.
+5. Manually promote Alexander's profile:
 
 ```sql
 update public.profiles
@@ -22,7 +24,7 @@ set role = 'admin'
 where id = '<alexander-auth-user-id>';
 ```
 
-5. Confirm authenticated users do not have direct access to encrypted credential columns:
+6. Confirm authenticated users do not have direct access to encrypted credential columns:
 
 ```sql
 select grantee, privilege_type
@@ -47,11 +49,14 @@ Supabase dashboard under Authentication > URL Configuration with:
 - Site URL: `https://vayvyx.com`
 - Allowed redirect URL: `https://vayvyx.com/reset-password`
 - Allowed redirect URL: `https://www.vayvyx.com/reset-password`
+- Allowed redirect URL: `https://vayvyx.com/accept-invite`
+- Allowed redirect URL: `https://www.vayvyx.com/accept-invite`
 
-For local recovery testing, add the Vite development redirect only while it is
-needed:
+For local recovery or invitation testing, add the Vite development redirects
+only while they are needed:
 
 - Allowed redirect URL: `http://localhost:5173/reset-password`
+- Allowed redirect URL: `http://localhost:5173/accept-invite`
 
 The Supabase Auth "Reset password" email template may be customized in the
 Supabase dashboard, but it must keep Supabase's confirmation or recovery URL
@@ -68,6 +73,7 @@ The following objects must be available to the backend through Supabase APIs whi
 - `public.mail_account_members`: backend service client manages memberships; authenticated users may read only their own/permitted membership rows through RLS.
 - `public.mail_identities`: backend service client creates the default identity and validates selected identities; authenticated users may read identities only for permitted mailboxes.
 - `public.mail_audit_log`: backend service client writes audit entries; authenticated users may read only permitted non-sensitive audit rows.
+- `public.access_audit_log`: backend service client writes sanitized access-management events; authenticated browser users do not receive secret values, Auth responses, invitation links, recovery links, or tokens.
 
 In Supabase, check table API availability from the Table Editor/API settings for each public table. Do not enable browser access by broad grants. Confirm:
 
@@ -173,6 +179,33 @@ Implemented endpoints:
 - `GET /api/mail/admin/users/search?q=...`
 
 The backend never returns mailbox passwords, decrypted credential values, encrypted credential columns, or service keys.
+
+## Access Management API
+
+The Access Center is served by the frontend route `/admin/access`, but every change is authorized again by the Node backend. All `/api/access/*` admin routes require a valid Supabase bearer token, an active account, and `public.profiles.role = 'admin'`. The invite-completion route accepts a valid invitation session before the normal active-account gate so new users can finish setup without receiving unrelated protected data.
+
+Implemented endpoints:
+
+- `GET /api/access/people`
+- `POST /api/access/invite`
+- `POST /api/access/invite/complete`
+- `GET /api/access/mailboxes`
+- `GET /api/access/people/:userId`
+- `PATCH /api/access/people/:userId`
+- `POST /api/access/people/:userId/reset-password`
+- `POST /api/access/people/:userId/resend-invite`
+- `POST /api/access/people/:userId/disable`
+- `POST /api/access/people/:userId/reactivate`
+- `POST /api/access/people/:userId/repair-profile`
+- `GET /api/access/people/:userId/mailboxes`
+- `POST /api/access/people/:userId/mailboxes`
+- `PATCH /api/access/people/:userId/mailboxes/:mailAccountId`
+- `DELETE /api/access/people/:userId/mailboxes/:mailAccountId`
+- `GET /api/access/people/:userId/audit`
+
+The backend uses the server-only Supabase administration client for invitations, password-reset emails, profile repair, and access mutations. Browser code only sends the user's bearer token to the backend. It never imports the admin client and never receives service-role keys, Auth Admin responses, invitation links, recovery links, mailbox credentials, or encrypted credential values.
+
+Access-management audit records store sanitized action names and safe metadata only. Do not add passwords, tokens, invitation URLs, recovery URLs, Supabase Auth responses, service-role keys, mailbox passwords, or encrypted credential values to `public.access_audit_log`.
 
 `GET /api/mail/access` returns safe authorization metadata for route bootstrapping, including zero-mailbox platform-admin setup:
 
@@ -369,10 +402,18 @@ npm run build
 
 1. Verify database backup availability in Supabase.
 2. Apply `supabase/migrations/202607280001_mail_foundation.sql`.
-3. Verify the Data API readiness checklist above.
-4. Verify RLS is enabled on mail tables.
-5. Verify encrypted credential columns are not granted to `anon` or `authenticated`.
-6. Promote Alexander:
+3. Apply `supabase/migrations/202607300001_access_management.sql`.
+4. Verify the Data API readiness checklist above.
+5. Verify RLS is enabled on mail and access-management tables.
+6. Verify encrypted credential columns are not granted to `anon` or `authenticated`.
+7. Add the required Supabase Auth redirect URLs:
+
+- `https://vayvyx.com/reset-password`
+- `https://www.vayvyx.com/reset-password`
+- `https://vayvyx.com/accept-invite`
+- `https://www.vayvyx.com/accept-invite`
+
+8. Promote Alexander:
 
 ```sql
 update public.profiles
@@ -445,6 +486,10 @@ Place the `/api/mail/*` reverse proxy before the SPA fallback:
 
 ```caddy
 handle /api/mail/* {
+    reverse_proxy 127.0.0.1:4174
+}
+
+handle /api/access/* {
     reverse_proxy 127.0.0.1:4174
 }
 ```

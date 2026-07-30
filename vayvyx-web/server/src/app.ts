@@ -4,8 +4,9 @@ import rateLimit from "express-rate-limit";
 import { ZodError } from "zod";
 import type { AppSupabaseClients } from "./types.js";
 import { isHttpError } from "./httpError.js";
-import { requireAuthenticated } from "./auth.js";
+import { requireActiveAccount, requireAuthenticated } from "./auth.js";
 import { createRoutes } from "./routes.js";
+import { createAccessAdminRoutes, createInviteSetupRoutes } from "./accessRoutes.js";
 import { AuditLogger } from "./audit.js";
 import {
   MailConnectionManager,
@@ -20,6 +21,7 @@ import {
   type MailCredentialService,
 } from "./credentialCrypto.js";
 import { mailRateLimitKey } from "./rateLimitKey.js";
+import { AccessManagementService } from "./accessManagementService.js";
 
 export type CreateAppOptions = {
   clients: AppSupabaseClients;
@@ -51,6 +53,7 @@ export function createApp(options: CreateAppOptions) {
   );
   const mailProvider = new ImapSmtpMailProvider(connectionManager);
   const templateService = new MailTemplateService(options.clients.admin, audit);
+  const accessManagementService = new AccessManagementService(options.clients.admin);
 
   app.disable("x-powered-by");
   app.disable("etag");
@@ -85,6 +88,25 @@ export function createApp(options: CreateAppOptions) {
       },
     })
   );
+  app.use(createInviteSetupRoutes(accessManagementService));
+  app.use(
+    ["/api/access/invite", "/api/access/people/:userId/reset-password", "/api/access/people/:userId/resend-invite"],
+    rateLimit({
+      windowMs: 15 * 60_000,
+      limit: 12,
+      keyGenerator: mailRateLimitKey,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: {
+        error: {
+          code: "RATE_LIMITED",
+          message: "Too many requests.",
+        },
+      },
+    })
+  );
+  app.use(requireActiveAccount);
+  app.use(createAccessAdminRoutes(accessManagementService));
   app.use(
     createRoutes({
       mailAdminService,

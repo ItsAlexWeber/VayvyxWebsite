@@ -183,6 +183,9 @@ export function MailAdminSettingsPage({ onNavigate }: Props) {
         <button type="button" onClick={loadAccounts}>
           <RefreshCcw size={17} /> Refresh
         </button>
+        <button type="button" onClick={() => onNavigate("/admin/access")}>
+          Access Center
+        </button>
       </header>
 
       {error && <p className="mail-warning" aria-live="polite">{error}</p>}

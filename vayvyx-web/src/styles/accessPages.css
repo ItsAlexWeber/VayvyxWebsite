@@ -487,6 +487,13 @@
   background: rgba(255, 255, 255, 0.045);
 }
 
+.access-button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .access-primary-button:hover:not(:disabled),
 .access-secondary-button:hover:not(:disabled) {
   transform: translateY(-1px);

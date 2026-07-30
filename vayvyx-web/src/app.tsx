@@ -10,6 +10,8 @@ import { RequestDemoPage } from "./pages/requestDemoPage.tsx";
 import { AccountPage } from "./pages/accountPage.tsx";
 import { MailPage } from "./pages/mailPage.tsx";
 import { MailAdminSettingsPage } from "./pages/mailAdminSettingsPage.tsx";
+import { AccessAdminPage } from "./pages/accessAdminPage.tsx";
+import { AcceptInvitePage } from "./pages/acceptInvitePage.tsx";
 
 export type NavigateWithTransition = (path: string) => void;
 
@@ -86,6 +88,11 @@ export default function App() {
           />
 
           <Route
+            path="/accept-invite"
+            element={<AcceptInvitePage onNavigate={navigateWithTransition} />}
+          />
+
+          <Route
             path="/request-demo"
             element={<RequestDemoPage onNavigate={navigateWithTransition} />}
           />
@@ -105,6 +112,11 @@ export default function App() {
             element={
               <MailAdminSettingsPage onNavigate={navigateWithTransition} />
             }
+          />
+
+          <Route
+            path="/admin/access"
+            element={<AccessAdminPage onNavigate={navigateWithTransition} />}
           />
         </Routes>
       </div>

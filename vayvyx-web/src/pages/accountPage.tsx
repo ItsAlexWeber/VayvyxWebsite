@@ -122,6 +122,20 @@ export function AccountPage({ onNavigate }: AccountPageProps) {
           mailError.code === "AUTH_REQUIRED"
         ) {
           setMailActions({ canOpenMail: false, canManageMail: false });
+        } else if (
+          mailError instanceof MailApiRequestError &&
+          (mailError.code === "ACCESS_DISABLED" ||
+            mailError.code === "ACCESS_EXPIRED" ||
+            mailError.code === "SETUP_INCOMPLETE")
+        ) {
+          await supabase.auth.signOut();
+          setAccountState({
+            status: "signed-out",
+            email: "",
+            license: null,
+            message: "Your Vayvyx access is unavailable. Contact support.",
+          });
+          return;
         }
       }
 
@@ -349,6 +363,16 @@ export function AccountPage({ onNavigate }: AccountPageProps) {
                   onClick={() => onNavigate("/admin/mail/settings")}
                 >
                   Manage company mail
+                </button>
+              )}
+
+              {mailActions.canManageMail && (
+                <button
+                  className="account-secondary-button"
+                  type="button"
+                  onClick={() => onNavigate("/admin/access")}
+                >
+                  Access management
                 </button>
               )}
 
